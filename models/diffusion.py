@@ -78,7 +78,6 @@ class DiffusionTraj(Module):
 
         e_rand = torch.randn_like(x_0).cuda()  # (B, N, d)
 
-
         e_theta = self.net(c0 * x_0 + c1 * e_rand, beta=beta, context=context)
         loss = F.mse_loss(e_theta.view(-1, point_dim), e_rand.view(-1, point_dim), reduction='mean')
         return loss
@@ -174,7 +173,8 @@ class TransformerConcatLinear(Module):
     def __init__(self, point_dim, context_dim, tf_layer, residual):
         super().__init__()
         self.residual = residual
-        self.pos_emb = PositionalEncoding(d_model=2*context_dim, dropout=0.1, max_len=24)
+        # self.pos_emb = PositionalEncoding(d_model=2*context_dim, dropout=0.1, max_len=24)
+        self.pos_emb = PositionalEncoding(d_model=2*context_dim, dropout=0.1, max_len=200)
         self.concat1 = ConcatSquashLinear(2,2*context_dim,context_dim+3)
         self.layer = nn.TransformerEncoderLayer(d_model=2*context_dim, nhead=4, dim_feedforward=4*context_dim)
         self.transformer_encoder = nn.TransformerEncoder(self.layer, num_layers=tf_layer)

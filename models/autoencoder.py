@@ -37,7 +37,7 @@ class AutoEncoder(Module):
         predicted_y_pos = dynamics.integrate_samples(predicted_y_vel)
         return predicted_y_pos.cpu().detach().numpy()
 
-    def get_loss(self, batch, node_type):
+    def get_loss_ori(self, batch, node_type):
         (first_history_index,
          x_t, y_t, x_st_t, y_st_t,
          neighbors_data_st,
@@ -47,4 +47,16 @@ class AutoEncoder(Module):
 
         feat_x_encoded = self.encode(batch,node_type) # B * 64
         loss = self.diffusion.get_loss(y_t.cuda(), feat_x_encoded)
+        return loss
+    
+    def get_loss(self, batch, node_type=None, latent=None):
+        # (first_history_index,
+        #  x_t, y_t, x_st_t, y_st_t,
+        #  neighbors_data_st,
+        #  neighbors_edge_value,
+        #  robot_traj_st_t,
+        #  map) = batch
+        # feat_x_encoded = self.encode(batch, node_type) # B * 64
+        # loss = self.diffusion.get_loss(y_t.cuda(), feat_x_encoded)
+        loss = self.diffusion.get_loss(batch.cuda(), latent)
         return loss

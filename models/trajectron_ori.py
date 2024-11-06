@@ -275,8 +275,7 @@ class Trajectron(object):
         #                                                                     self.device,
         #                                                                     edge_types
         #                                                                     )
-        env=edge_types=None
-        node_type = "PEDESTRIAN"
+        env=edge_types=node_type=None
         self.node_models_dict["default"] = MultimodalGenerativeCVAE(env, node_type, self.model_registrar, self.hyperparams, self.device, edge_types)
 
     def set_curr_iter(self, curr_iter):
@@ -325,7 +324,6 @@ class Trajectron(object):
         #                         map=map,
         #                         prediction_horizon=self.ph)
         x = batch.to(self.device)
-        model = self.node_models_dict["default"]
         loss = model.train_loss(inputs=x,
                                 inputs_st=x_st_t,
                                 first_history_indices=first_history_index,
@@ -368,14 +366,16 @@ class Trajectron(object):
         #                         robot=robot_traj_st_t,
         #                         map=map,
         #                         prediction_horizon=self.ph)
-        raise NotImplemented
-        (first_history_index, x_t, x_st_t) = batch
-        x = x_t.to(self.device)
-        x_st_t = x_st_t.to(self.device)
-        model = self.node_models_dict["default"]
+        x = batch.to(self.device)
         feat_x = model.get_latent(inputs=x,
-                                inputs_st=x_st_t,
-                                first_history_indices=first_history_index,
+                                # inputs_st=x_st_t,
+                                # first_history_indices=first_history_index,
+                                # labels=y,
+                                # labels_st=y_st_t,
+                                # neighbors=restore(neighbors_data_st),
+                                # neighbors_edge_value=restore(neighbors_edge_value),
+                                # robot=robot_traj_st_t,
+                                # map=map,
                                 prediction_horizon=self.ph)
         return feat_x
 

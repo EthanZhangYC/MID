@@ -2,7 +2,7 @@ import random
 import numpy as np
 import pandas as pd
 from environment import DoubleHeaderNumpyArray
-from ncls import NCLS
+# from ncls import NCLS
 
 
 class Node(object):

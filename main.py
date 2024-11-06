@@ -6,7 +6,7 @@ import yaml
 from easydict import EasyDict
 import numpy as np
 import pdb
-
+import torch
 
 
 def parse_args():
@@ -14,14 +14,22 @@ def parse_args():
         description='Pytorch implementation of MID')
     parser.add_argument('--config', default='')
     parser.add_argument('--dataset', default='')
+    parser.add_argument('--traj_len', default=200)
+    parser.add_argument('--job_dir', default='results/test')
+
     return parser.parse_args()
 
 
 def main():
+    torch.set_num_threads(8)
     # parse arguments and load config
     args = parse_args()
     with open(args.config) as f:
        config = yaml.safe_load(f)
+    
+    if not os.path.exists(args.job_dir):
+        os.makedirs(args.job_dir)
+        os.makedirs(args.job_dir+'/ckpt')
 
     for k, v in vars(args).items():
        config[k] = v
