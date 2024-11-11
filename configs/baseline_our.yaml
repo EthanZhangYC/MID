@@ -1,6 +1,6 @@
 ############ MID Config #############
 # optimizer
-lr: 0.001
+lr: 0.0001
 # dataset
 data_dir: processed_data
   # the path with the directory with XXX.pkl
@@ -8,13 +8,13 @@ data_dir: processed_data
 diffnet: TransformerConcatLinear #TransformerConcatLinear
 encoder_dim: 6
 tf_layer: 3
-epochs: 30000
-batch_size: 1024
+epochs: 50000
+batch_size: 256
 eval_batch_size: 256
 k_eval: 25
 seed: 123
 eval_every: 30
-save_every: 100
+save_every: 1000
 # Testing
 eval_at: 70
 eval_mode: False

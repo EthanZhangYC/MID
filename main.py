@@ -14,14 +14,14 @@ def parse_args():
         description='Pytorch implementation of MID')
     parser.add_argument('--config', default='')
     parser.add_argument('--dataset', default='')
-    parser.add_argument('--traj_len', default=200)
+    parser.add_argument('--traj_len', type=int, default=200)
     parser.add_argument('--job_dir', default='results/test')
-
+    parser.add_argument('--embed_latent', action='store_true', help='whether to output attention in encoder')
     return parser.parse_args()
 
 
 def main():
-    torch.set_num_threads(8)
+    torch.set_num_threads(4)
     # parse arguments and load config
     args = parse_args()
     with open(args.config) as f:

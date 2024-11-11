@@ -299,6 +299,8 @@ class MID():
                 trip_len = trip_len / self.config.traj_len
                 total_time = total_time / 3000.
                 head = torch.cat([label, total_dist, total_time, trip_len, avg_dist, avg_speed],dim=1)
+                if self.config.encoder_dim==1:
+                    head = label.float()
                 head = head.cuda()
                 
                 speed = batch_data_x[:,:,4]
@@ -533,6 +535,8 @@ class MID():
         self.train_env = None
 
     def _build_encoder(self):
+        self.encoder = None
+        return
         self.encoder = Trajectron(self.registrar, self.hyperparams, "cuda")
 
         self.encoder.set_environment(self.train_env)

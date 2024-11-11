@@ -14,9 +14,16 @@ class AutoEncoder(Module):
         self.config = config
         self.encoder = encoder
         self.diffnet = getattr(diffusion, config.diffnet)
+        
+        if self.config.embed_latent:
+            print('embedding latent')
+            self.latent_embed = nn.Linear(config.encoder_dim,128)
+            encoder_dim = 128
+        else:
+            encoder_dim = config.encoder_dim
 
         self.diffusion = DiffusionTraj(
-            net = self.diffnet(point_dim=2, context_dim=config.encoder_dim, tf_layer=config.tf_layer, residual=False),
+            net = self.diffnet(point_dim=2, context_dim=encoder_dim, tf_layer=config.tf_layer, residual=False, config=config),
             var_sched = VarianceSchedule(
                 num_steps=100,
                 beta_T=5e-2,
@@ -24,12 +31,25 @@ class AutoEncoder(Module):
 
             )
         )
+        
+        
 
     def encode(self, batch,node_type):
         z = self.encoder.get_latent(batch, node_type)
         return z
     
-    def generate(self, batch, node_type, num_points, sample, bestof,flexibility=0.0, ret_traj=False, sampling="ddpm", step=100):
+    def generate(self, latent, num_points, sample, bestof, flexibility=0.0, ret_traj=False, sampling="ddpm", step=100):
+        #print(f"Using {sampling}")
+        # dynamics = self.encoder.node_models_dict[node_type].dynamic
+        # encoded_x = self.encoder.get_latent(batch, node_type)
+        if self.config.embed_latent:
+            latent = self.latent_embed(latent)
+        predicted_y_vel = self.diffusion.sample(num_points, latent, sample, bestof, flexibility=flexibility, ret_traj=ret_traj, sampling=sampling, step=step)
+        return predicted_y_vel.cpu().detach().numpy()
+        # predicted_y_pos = dynamics.integrate_samples(predicted_y_vel)
+        return predicted_y_pos.cpu().detach().numpy()
+    
+    def generate_ori(self, batch, node_type, num_points, sample, bestof,flexibility=0.0, ret_traj=False, sampling="ddpm", step=100):
         #print(f"Using {sampling}")
         dynamics = self.encoder.node_models_dict[node_type].dynamic
         encoded_x = self.encoder.get_latent(batch, node_type)
@@ -58,5 +78,7 @@ class AutoEncoder(Module):
         #  map) = batch
         # feat_x_encoded = self.encode(batch, node_type) # B * 64
         # loss = self.diffusion.get_loss(y_t.cuda(), feat_x_encoded)
+        if self.config.embed_latent:
+            latent = self.latent_embed(latent)
         loss = self.diffusion.get_loss(batch.cuda(), latent)
         return loss

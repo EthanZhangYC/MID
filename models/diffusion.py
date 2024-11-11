@@ -170,19 +170,21 @@ class TrajNet(Module):
 
 class TransformerConcatLinear(Module):
 
-    def __init__(self, point_dim, context_dim, tf_layer, residual):
+    def __init__(self, point_dim, context_dim, tf_layer, residual, config):
         super().__init__()
         self.residual = residual
         # self.pos_emb = PositionalEncoding(d_model=2*context_dim, dropout=0.1, max_len=24)
-        self.pos_emb = PositionalEncoding(d_model=2*context_dim, dropout=0.1, max_len=200)
+        self.pos_emb = PositionalEncoding(d_model=2*context_dim, dropout=0.1, max_len=config.traj_len)
         self.concat1 = ConcatSquashLinear(2,2*context_dim,context_dim+3)
-        self.layer = nn.TransformerEncoderLayer(d_model=2*context_dim, nhead=4, dim_feedforward=4*context_dim)
+        if context_dim==1:
+            self.layer = nn.TransformerEncoderLayer(d_model=2*context_dim, nhead=1, dim_feedforward=4*context_dim)
+        else:
+            self.layer = nn.TransformerEncoderLayer(d_model=2*context_dim, nhead=4, dim_feedforward=4*context_dim)
         self.transformer_encoder = nn.TransformerEncoder(self.layer, num_layers=tf_layer)
         self.concat3 = ConcatSquashLinear(2*context_dim,context_dim,context_dim+3)
         self.concat4 = ConcatSquashLinear(context_dim,context_dim//2,context_dim+3)
         self.linear = ConcatSquashLinear(context_dim//2, 2, context_dim+3)
         #self.linear = nn.Linear(128,2)
-
 
     def forward(self, x, beta, context):
         batch_size = x.size(0)
@@ -195,11 +197,11 @@ class TransformerConcatLinear(Module):
         final_emb = x.permute(1,0,2)
         final_emb = self.pos_emb(final_emb)
 
-
         trans = self.transformer_encoder(final_emb).permute(1,0,2)
         trans = self.concat3(ctx_emb, trans)
         trans = self.concat4(ctx_emb, trans)
         return self.linear(ctx_emb, trans)
+
 
 class TransformerLinear(Module):
 
