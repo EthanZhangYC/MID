@@ -19,6 +19,7 @@ def parse_args():
     parser.add_argument('--dataset', default='')
     parser.add_argument('--traj_len', type=int, default=200)
     parser.add_argument('--job_dir', default='results/test')
+    parser.add_argument('--embed_latent', action='store_true', help='whether to output attention in encoder')
 
     return parser.parse_args()
 
@@ -311,6 +312,30 @@ model_dir_list=[
     "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_50000.pt",
 ] 
 filename='1109mtl_mid_speed_lr5e4.png'
+
+
+model_dir_list=[
+    "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_1000.pt",
+    "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_2000.pt",
+    "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_4000.pt",
+    "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_8000.pt",
+    "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_16000.pt",
+    "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_32000.pt",
+] 
+filename='1111mtl_mid_speed_embedlatent_cond1_class0.png'
+# filename='1111mtl_mid_speed_embedlatent_cond1_class0_ddpm.png'
+# head = np.array([[0.0000e+00],[1.0000e+00, ],[2.0000e+00, ],[3.0000e+00,]])
+
+
+model_dir_list=[
+    "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_1000.pt",
+    "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_2000.pt",
+    "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_4000.pt",
+    "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_8000.pt",
+    "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_16000.pt",
+    "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_32000.pt",
+] 
+filename='1111mtl_mid_speed_embedlatent_cond6.png'
 
 
 

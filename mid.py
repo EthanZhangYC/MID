@@ -269,6 +269,54 @@ def load_data(batch_sizes, traj_length):
 
 
 
+class Proxy(nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, n_ensembles=5):
+        super().__init__()
+        
+        # self.models = nn.ModuleList([
+        #     nn.Sequential(
+        #         nn.Linear(input_dim, hidden_dim),
+        #         nn.LeakyReLU(),
+        #         nn.Linear(hidden_dim, hidden_dim),
+        #         nn.LeakyReLU(),
+        #         nn.Linear(hidden_dim, 1)
+        #     )
+        #  for _ in range(n_ensembles)])
+        self.models = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(input_dim, hidden_dim//4),
+                nn.LeakyReLU(),
+                nn.Linear(hidden_dim//4, hidden_dim//2),
+                nn.LeakyReLU(),
+                nn.Linear(hidden_dim//2, hidden_dim), # 256,200,1024
+                # nn.AvgPool1d(200, stride=1),
+                # nn.Linear(hidden_dim, 1)
+            )
+         for _ in range(n_ensembles)])
+        self.fcs = nn.ModuleList([nn.Linear(hidden_dim, 1) for _ in range(n_ensembles)])
+        print(self.models[0])
+        
+    def forward(self, x, confidence=False):
+        xs = []
+        for model in self.models:
+            xs.append(model(x))
+        xs = torch.stack(xs, dim=0)
+        
+        if confidence:
+            return torch.mean(xs, dim=0), torch.std(xs, dim=0)
+        else:
+            return torch.mean(xs, dim=0)
+        
+    def get_loss(self, x, y):
+        loss = 0.0
+        for idx,model in enumerate(self.models):
+            feat = model(x)
+            feat = F.avg_pool1d(feat.transpose(1, 2), kernel_size = feat.size(1)).transpose(1, 2).squeeze(1)
+            y_pred = self.fcs[idx](feat)
+            loss += F.mse_loss(y, y_pred).mean()
+        return loss
+
+
 class MID():
     def __init__(self, config):
         self.config = config
@@ -393,6 +441,37 @@ class MID():
 
             #     self.model.train()
             # 1
+    
+    def train_proxy(self):
+        for epoch in range(1, self.config.proxy_epochs + 1):
+            node_type = ""
+            data_loader = self.train_data_loader 
+            pbar = tqdm(data_loader, ncols=80)
+            epoch_losses = [] 
+            for batch_data in pbar:
+                self.optimizer_proxy.zero_grad()
+                
+                x0 = batch_data[0][:,:,:2].float().cuda() # [256, 200, 9]
+                label = batch_data[-1].unsqueeze(1).float().cuda()
+                if self.config.relative_xy:
+                    x0 = x0 - x0[:,0,:].unsqueeze(1)
+                    lat_min,lat_max = (18.249901, 55.975593)
+                    lon_min,lon_max = (-122.3315333, 126.998528)
+                    x0[:,0] = x0[:,0] * (lat_max-lat_min) + lat_min
+                    x0[:,1] = x0[:,1] * (lon_max-lon_min) + lon_min
+                train_loss = self.model_proxy.get_loss(x0, label)
+                
+                pbar.set_description(f"Epoch {epoch}, {node_type} MSE: {train_loss.item():.8f}")
+                epoch_losses.append(train_loss.item())
+                train_loss.backward()
+                self.optimizer_proxy.step()
+            # print(f"Epoch {epoch}, {node_type} MSE: {np.array(epoch_losses).mean():.8f}")
+            self.log.info(f"Epoch {epoch}, {node_type} MSE: {np.array(epoch_losses).mean():.8f}")
+
+            if epoch % self.config.proxy_save_every == 0:
+                m_path = self.config.job_dir + f"/ckpt_proxy/unet_{epoch}.pt"
+                torch.save(self.model_proxy.state_dict(), m_path)
+
 
 
     def eval(self, sampling, step):
@@ -508,6 +587,9 @@ class MID():
                                     ],
                                     lr=self.config.lr)
         self.scheduler = optim.lr_scheduler.ExponentialLR(self.optimizer,gamma=0.98)
+        
+        self.optimizer_proxy = optim.Adam(self.model_proxy.parameters(), lr=self.config.proxy_lr)
+        self.scheduler_proxy = optim.lr_scheduler.ExponentialLR(self.optimizer_proxy,gamma=0.98)
         print("> Optimizer built!")
 
     def _build_encoder_config(self):
@@ -542,7 +624,6 @@ class MID():
         self.encoder.set_environment(self.train_env)
         self.encoder.set_annealing_params()
 
-
     def _build_model(self):
         """ Define Model """
         config = self.config
@@ -551,6 +632,9 @@ class MID():
         self.model = model.cuda()
         if self.config.eval_mode:
             self.model.load_state_dict(self.checkpoint['ddpm'])
+            
+        model_proxy = Proxy(2, self.config.proxy_hidden_dim, 1, n_ensembles=self.config.proxy_n_ensemble)
+        self.model_proxy = model_proxy.cuda()
 
         print("> Model built!")
 
@@ -589,7 +673,6 @@ class MID():
         #     self.train_data_loader[node_type_data_set.node_type] = node_type_dataloader
         
         self.train_data_loader = load_data(self.config.batch_size, self.config.traj_len)
-
 
     def _build_eval_loader(self):
         return

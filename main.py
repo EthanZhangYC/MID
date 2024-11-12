@@ -17,6 +17,8 @@ def parse_args():
     parser.add_argument('--traj_len', type=int, default=200)
     parser.add_argument('--job_dir', default='results/test')
     parser.add_argument('--embed_latent', action='store_true', help='whether to output attention in encoder')
+    parser.add_argument('--proxy_mode', action='store_true', help='whether to output attention in encoder')
+    parser.add_argument('--relative_xy', action='store_true', help='whether to output attention in encoder')
     return parser.parse_args()
 
 
@@ -30,6 +32,7 @@ def main():
     if not os.path.exists(args.job_dir):
         os.makedirs(args.job_dir)
         os.makedirs(args.job_dir+'/ckpt')
+        os.makedirs(args.job_dir+'/ckpt_proxy')
 
     for k, v in vars(args).items():
        config[k] = v
@@ -52,6 +55,11 @@ def main():
 
     if config["eval_mode"]:
         agent.eval(sampling, 100//step)
+    elif args.proxy_mode:
+        print('proxy mode')
+        if args.relative_xy:
+            print("relative_xy")
+        agent.train_proxy()
     else:
         agent.train()
 
