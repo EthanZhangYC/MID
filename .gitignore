@@ -1,2 +1,5 @@
 results
 raw_data
+./*.png
+*.npy
+*.pyc

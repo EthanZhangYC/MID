@@ -14,11 +14,15 @@ def parse_args():
         description='Pytorch implementation of MID')
     parser.add_argument('--config', default='')
     parser.add_argument('--dataset', default='')
-    parser.add_argument('--traj_len', type=int, default=200)
+    parser.add_argument('--resume', default='')
+    parser.add_argument('--traj_len', type=int, default=650)
     parser.add_argument('--job_dir', default='results/test')
     parser.add_argument('--embed_latent', action='store_true', help='whether to output attention in encoder')
-    parser.add_argument('--proxy_mode', action='store_true', help='whether to output attention in encoder')
+    parser.add_argument('--proxy_train', action='store_true', help='whether to output attention in encoder')
+    parser.add_argument('--proxy_eval', action='store_true', help='whether to output attention in encoder')
     parser.add_argument('--relative_xy', action='store_true', help='whether to output attention in encoder')
+    parser.add_argument('--use_img', action='store_true', help='whether to output attention in encoder')
+    parser.add_argument('--not_filter_padding', action='store_true', help='whether to output attention in encoder')
     return parser.parse_args()
 
 
@@ -39,6 +43,8 @@ def main():
     config["exp_name"] = args.config.split("/")[-1].split(".")[0]
     config["dataset"] = args.dataset[:-1]
     #pdb.set_trace()
+    # if "cond1" in args.job_dir:
+    #     config.encoder_dim = 1
     config = EasyDict(config)
     agent = MID(config)
 
@@ -55,11 +61,17 @@ def main():
 
     if config["eval_mode"]:
         agent.eval(sampling, 100//step)
-    elif args.proxy_mode:
-        print('proxy mode')
+    elif args.proxy_train:
+        print('proxy training')
         if args.relative_xy:
             print("relative_xy")
         agent.train_proxy()
+    elif args.proxy_eval:
+        print('proxy evaluate')
+        assert len(args.dataset)>0
+        if args.relative_xy:
+            print("relative_xy")
+        agent.eval_proxy(args.dataset, args.resume)
     else:
         agent.train()
 

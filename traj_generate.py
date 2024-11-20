@@ -11,6 +11,7 @@ import pdb
 import torch
 from models.autoencoder import AutoEncoder
 from mid import load_data
+import pickle
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -20,6 +21,8 @@ def parse_args():
     parser.add_argument('--traj_len', type=int, default=200)
     parser.add_argument('--job_dir', default='results/test')
     parser.add_argument('--embed_latent', action='store_true', help='whether to output attention in encoder')
+    parser.add_argument('--generate', action='store_true', help='whether to output attention in encoder')
+    parser.add_argument('--use_img', action='store_true', help='whether to output attention in encoder')
 
     return parser.parse_args()
 
@@ -107,8 +110,6 @@ with open(args.config) as f:
     config = yaml.safe_load(f)
 for k, v in vars(args).items():
     config[k] = v
-# config["exp_name"] = args.config.split("/")[-1].split(".")[0]
-# config["dataset"] = args.dataset[:-1]
 config = EasyDict(config)
 agent = MID(config)
 sampling = "ddim"
@@ -116,45 +117,16 @@ steps = 5
 # agent.eval(sampling, 100//step)
 
 
-train_data_loader = load_data(config.batch_size, config.traj_len)
-for batch_data in train_data_loader:
-    batch_data_x = batch_data[0]
-    speed = batch_data_x[:,:,4]
-    x0 = torch.ones_like(batch_data_x[:,:,:2])
-    x0[:,:,1] = speed * torch.sin(batch_data_x[:,:,7]/180*np.pi)
-    x0[:,:,0] = speed * torch.cos(batch_data_x[:,:,7]/180*np.pi)
-    break
+# train_data_loader = load_data(config)
+# for batch_data in train_data_loader:
+#     batch_data_x = batch_data[0]
+#     speed = batch_data_x[:,:,4]
+#     x0 = torch.ones_like(batch_data_x[:,:,:2])
+#     x0[:,:,1] = speed * torch.sin(batch_data_x[:,:,7]/180*np.pi)
+#     x0[:,:,0] = speed * torch.cos(batch_data_x[:,:,7]/180*np.pi)
+#     break
 
 
-# n_steps = config.diffusion.num_diffusion_timesteps
-# beta = torch.linspace(config.diffusion.beta_start,
-#                           config.diffusion.beta_end, n_steps).cuda()
-# alpha = 1. - beta
-# alpha_bar = torch.cumprod(alpha, dim=0)
-# lr = 2e-4  # Explore this - might want it lower when training on the full dataset
-
-# eta=0.0
-# timesteps=100
-# skip = n_steps // timesteps
-# seq = range(0, n_steps, skip)
-
-# # # load head information for guide trajectory generation
-# # batchsize = 500
-# # head = np.load('heads.npy',
-# #                    allow_pickle=True)
-# # head = torch.from_numpy(head).float()
-# # dataloader = DataLoader(head, batch_size=batchsize, shuffle=True, num_workers=4)
-
-
-# # # # the mean and std of head information, using for rescaling
-# # # # departure_time, trip_distance,  trip_time, trip_length, avg_dis, avg_speed
-# # # hmean=[0, 10283.41600429,   961.66920921,   292.30299616,    36.02766493, 10.98568072]
-# # # hstd=[1, 8782.599246414231, 379.41939897358264, 107.24874828393955, 28.749924691281066, 8.774629812281198]
-# mean = np.array([104.07596303,   30.68085491])
-# std = np.array([2.15106194e-02, 1.89193207e-02])
-# # # # the original mean and std of trajectory length, using for rescaling the trajectory length
-# len_mean = 292.30299616  # Chengdu
-# len_std = 107.2487482839  # Chengdu
 
 
 
@@ -217,7 +189,7 @@ model_dir_list=[
     "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_32000.pt",
     "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_40000.pt"
 ] 
-# head = np.array([[0.0000e+00],[1.0000e+00, ],[2.0000e+00, ],[3.0000e+00,]])
+head = np.array([[0.0000e+00],[1.0000e+00, ],[2.0000e+00, ],[3.0000e+00,]])
 filename='1107mtl_mid_speed_cond1_class0.png'
 
 model_dir_list=[
@@ -339,88 +311,112 @@ filename='1111mtl_mid_speed_embedlatent_cond6.png'
 
 
 
+model_dir_list=[
+    "/home/yichen/MID/results/1109_cond1_lr1e4_bs256_embedlatent/ckpt/unet_4000.pt",
+    "/home/yichen/MID/results/1109_cond1_lr1e4_bs256_embedlatent/ckpt/unet_8000.pt",
+    "/home/yichen/MID/results/1109_cond1_lr1e4_bs256_embedlatent/ckpt/unet_16000.pt",
+    "/home/yichen/MID/results/1109_cond1_lr1e4_bs256_embedlatent/ckpt/unet_32000.pt",
+] 
+n_data = 10000
+head = torch.from_numpy(np.random.randint(0,4,[n_data,1])).float()
+
+model_dir_list=[
+    "/home/yichen/MID/results/1109_cond6_lr1e4_bs256_embedlatent/ckpt/unet_4000.pt",
+    "/home/yichen/MID/results/1109_cond6_lr1e4_bs256_embedlatent/ckpt/unet_8000.pt",
+    "/home/yichen/MID/results/1109_cond6_lr1e4_bs256_embedlatent/ckpt/unet_16000.pt",
+    "/home/yichen/MID/results/1109_cond6_lr1e4_bs256_embedlatent/ckpt/unet_32000.pt",
+] 
+head = np.load("/home/yichen/MID/1114_heads_tgt.npy")
+head = torch.from_numpy(head).float()
 
 
 
+if not args.generate:
+    print(filename)
+    # x0 = torch.randn(batchsize, 2, config.data.traj_length).cuda()
+    head = torch.from_numpy(head).float().cuda()
 
-
-
-print(filename)
-# x0 = torch.randn(batchsize, 2, config.data.traj_length).cuda()
-head = torch.from_numpy(head).float().cuda()
-
-
-Gen_traj = []
-Gen_head = []
-for model_dir in model_dir_list:
-    ckpt_dir = model_dir
-    print(ckpt_dir)
-    checkpoint = torch.load(ckpt_dir)
-    agent.model.load_state_dict(checkpoint)
-    new_traj = agent.model.generate(head, num_points=args.traj_len, sample=20, bestof=True, sampling=sampling, step=100//steps) # B * 20 * 12 * 2
-    new_traj = new_traj[0,0] # (20, 4, 200, 2)
-    # pdb.set_trace()
-    
-    # ims = []
-    # n = x0.size(0)
-    # x = x0
-    # seq_next = [-1] + list(seq[:-1])
-    # for i, j in zip(reversed(seq), reversed(seq_next)):
-    #     t = (torch.ones(n) * i).to(x.device)
-    #     next_t = (torch.ones(n) * j).to(x.device)
-    #     with torch.no_grad():
-    #         pred_noise = unet(x, t, head)
-    #         x = p_xt(x, pred_noise, t, next_t, beta, eta)
-    #         if i % 10 == 0:
-    #             ims.append(x.cpu().squeeze(0))
-    # trajs = ims[-1].cpu().numpy()
-    # trajs = trajs[:,:2,:]
-    # # resample the trajectory length
-    # # for j in range(batchsize):
-    # j=0
-    # new_traj = resample_trajectory(trajs[j].T, lengths[j])
-    # # new_traj = new_traj * std + mean
-    
-    # if input_speed:
-    lat_min,lat_max = (0.0, 49.95356703911097)
-    lon_min,lon_max = (0.0, 49.95356703911097)
-    new_traj[:,0] = new_traj[:,0] * (lat_max-lat_min) + lat_min
-    new_traj[:,1] = new_traj[:,1] * (lon_max-lon_min) + lon_min        
-    # start_pt = [36,72]
-    tmp_x = 36
-    tmp_y = 72
-    new_new_traj = []
-    new_new_traj.append((tmp_x,tmp_y))
-    for i in range(len(new_traj)):
-        tmp_x += new_traj[i,0]*5/111/1000
-        tmp_y += new_traj[i,1]*5/111/1000
+    Gen_traj = []
+    Gen_head = []
+    for model_dir in model_dir_list:
+        ckpt_dir = model_dir
+        print(ckpt_dir)
+        checkpoint = torch.load(ckpt_dir)
+        agent.model.load_state_dict(checkpoint)
+        new_traj = agent.model.generate(head, num_points=args.traj_len, sample=2, bestof=True, sampling=sampling, step=100//steps) # B * 20 * 12 * 2
+        new_traj = new_traj[0,0] # (20, 4, 200, 2)
+        
+        lat_min,lat_max = (0.0, 49.95356703911097)
+        lon_min,lon_max = (0.0, 49.95356703911097)
+        new_traj[:,0] = new_traj[:,0] * (lat_max-lat_min) + lat_min
+        new_traj[:,1] = new_traj[:,1] * (lon_max-lon_min) + lon_min        
+        # start_pt = [36,72]
+        tmp_x = 36
+        tmp_y = 72
+        new_new_traj = []
         new_new_traj.append((tmp_x,tmp_y))
-    new_traj = np.array(new_new_traj)
-    # else:
-    #     lat_min,lat_max = (18.249901, 55.975593)
-    #     lon_min,lon_max = (-122.3315333, 126.998528)
-    #     new_traj[:,0] = new_traj[:,0] * (lat_max-lat_min) + lat_min
-    #     new_traj[:,1] = new_traj[:,1] * (lon_max-lon_min) + lon_min
-    # # print(new_traj)
-    Gen_traj.append(new_traj)
+        for i in range(len(new_traj)):
+            tmp_x += new_traj[i,0]*5/111/1000
+            tmp_y += new_traj[i,1]*5/111/1000
+            new_new_traj.append((tmp_x,tmp_y))
+        new_traj = np.array(new_new_traj)
+        # else:
+        #     lat_min,lat_max = (18.249901, 55.975593)
+        #     lon_min,lon_max = (-122.3315333, 126.998528)
+        #     new_traj[:,0] = new_traj[:,0] * (lat_max-lat_min) + lat_min
+        #     new_traj[:,1] = new_traj[:,1] * (lon_max-lon_min) + lon_min
+        # # print(new_traj)
+        Gen_traj.append(new_traj)
 
+    fig = plt.figure(figsize=(12,12))
+    for i in range(len(Gen_traj)):
+        traj=Gen_traj[i]
+        ax1 = fig.add_subplot(331+i)  
+        ax1.plot(traj[:,0],traj[:,1],color='blue',alpha=0.1)
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.show()
 
-# try:
-fig = plt.figure(figsize=(12,12))
-for i in range(len(Gen_traj)):
-    traj=Gen_traj[i]
-    ax1 = fig.add_subplot(331+i)  
-    ax1.plot(traj[:,0],traj[:,1],color='blue',alpha=0.1)
-# except:
-#     pdb.set_trace()
-plt.tight_layout()
-plt.savefig(filename)
-plt.show()
+else:
+    bs = 128
+    for model_dir in model_dir_list:
+        filename = '1120_%s_epoch%s_len%d'%(model_dir.split('/')[-3],model_dir.split('_')[-1],args.traj_len)
+        filename = filename.replace(".pt","")
+        
+        ckpt_dir = model_dir
+        print(ckpt_dir)
+        checkpoint = torch.load(ckpt_dir)
+        agent.model.load_state_dict(checkpoint)
+        val_loader = torch.utils.data.DataLoader(head, batch_size=bs, drop_last=False)
+        
+        Gen_traj = []
+        Gen_head = head
+        for batch_head in val_loader:
+            batch_head = batch_head.cuda()
+            new_v = agent.model.generate(batch_head, num_points=args.traj_len, sample=2, bestof=True, sampling=sampling, step=100//steps) # (2, bs, 200, 2)
+            new_v = new_v[0] # (bs, 200, 2)
 
-# plt.figure(figsize=(8,8))
-# for i in range(len(Gen_traj)):
-#     traj=Gen_traj[i]
-#     plt.plot(traj[:,0],traj[:,1],color='blue',alpha=0.1)
-# plt.tight_layout()
-# plt.savefig('Chengdu_traj.png')
-# plt.show()
+            v_min,v_max = (0.0, 49.95356703911097)
+            new_v = new_v * (v_max-v_min) + v_min
+            new_st = new_v*5/111/1000 
+            
+            tmp_x = 36+np.random.randn()/100
+            tmp_y = 72+np.random.randn()/100
+            cum_st = np.cumsum(new_st, axis=1)
+            new_traj = np.ones([new_v.shape[0], 200, 2]) * [tmp_x, tmp_y]
+            new_traj = new_traj + cum_st
+
+            Gen_traj.append(new_traj)
+            
+        Gen_traj = np.concatenate(Gen_traj)
+        with open(filename+".npy", "wb") as f:
+            pickle.dump([Gen_traj,head], f)
+            
+        fig,ax = plt.subplots()
+        for i in range(len(Gen_traj)):
+            traj = Gen_traj[i]
+            plt.plot(traj[:,0],traj[:,1],color='blue',alpha=0.1)
+        plt.tight_layout()
+        plt.savefig(filename+".png")
+        plt.show()
+        

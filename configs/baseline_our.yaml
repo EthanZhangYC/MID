@@ -6,7 +6,7 @@ data_dir: processed_data
   # the path with the directory with XXX.pkl
 # Training Prarmeters:
 diffnet: TransformerConcatLinear #TransformerConcatLinear
-encoder_dim: 6
+encoder_dim: 8
 tf_layer: 3
 epochs: 50000
 batch_size: 256
@@ -48,6 +48,7 @@ eval_device: None
 # Proxy model:
 proxy_epochs: 50000
 proxy_save_every: 1000
+proxy_eval_every: 1
 proxy_lr: 0.001
 proxy_n_ensemble: 10
 proxy_hidden_dim: 1024

@@ -64,7 +64,7 @@ class DiffusionTraj(Module):
         self.net = net
         self.var_sched = var_sched
 
-    def get_loss(self, x_0, context, t=None):
+    def get_loss(self, x_0, context, t=None, img_feat=None):
 
         batch_size, _, point_dim = x_0.size()
         if t == None:
@@ -78,7 +78,7 @@ class DiffusionTraj(Module):
 
         e_rand = torch.randn_like(x_0).cuda()  # (B, N, d)
 
-        e_theta = self.net(c0 * x_0 + c1 * e_rand, beta=beta, context=context)
+        e_theta = self.net(c0 * x_0 + c1 * e_rand, beta=beta, context=context, img_feat=img_feat)
         loss = F.mse_loss(e_theta.view(-1, point_dim), e_rand.view(-1, point_dim), reduction='mean')
         return loss
 
@@ -173,26 +173,37 @@ class TransformerConcatLinear(Module):
     def __init__(self, point_dim, context_dim, tf_layer, residual, config):
         super().__init__()
         self.residual = residual
+        # if config.use_img:
+        #     context_dim = 1128
+        if config.use_img:
+            ctx_dim = context_dim+3+1000
+        else:
+            ctx_dim = context_dim+3
+            
         # self.pos_emb = PositionalEncoding(d_model=2*context_dim, dropout=0.1, max_len=24)
         self.pos_emb = PositionalEncoding(d_model=2*context_dim, dropout=0.1, max_len=config.traj_len)
-        self.concat1 = ConcatSquashLinear(2,2*context_dim,context_dim+3)
+        self.concat1 = ConcatSquashLinear(2,2*context_dim,ctx_dim)
         if context_dim==1:
             self.layer = nn.TransformerEncoderLayer(d_model=2*context_dim, nhead=1, dim_feedforward=4*context_dim)
         else:
             self.layer = nn.TransformerEncoderLayer(d_model=2*context_dim, nhead=4, dim_feedforward=4*context_dim)
         self.transformer_encoder = nn.TransformerEncoder(self.layer, num_layers=tf_layer)
-        self.concat3 = ConcatSquashLinear(2*context_dim,context_dim,context_dim+3)
-        self.concat4 = ConcatSquashLinear(context_dim,context_dim//2,context_dim+3)
-        self.linear = ConcatSquashLinear(context_dim//2, 2, context_dim+3)
+        self.concat3 = ConcatSquashLinear(2*context_dim,context_dim,ctx_dim)
+        self.concat4 = ConcatSquashLinear(context_dim,context_dim//2,ctx_dim)
+        self.linear = ConcatSquashLinear(context_dim//2, 2, ctx_dim)
         #self.linear = nn.Linear(128,2)
 
-    def forward(self, x, beta, context):
+    def forward(self, x, beta, context, img_feat=None):
         batch_size = x.size(0)
         beta = beta.view(batch_size, 1, 1)          # (B, 1, 1)
         context = context.view(batch_size, 1, -1)   # (B, 1, F)
 
         time_emb = torch.cat([beta, torch.sin(beta), torch.cos(beta)], dim=-1)  # (B, 1, 3)
         ctx_emb = torch.cat([time_emb, context], dim=-1)    # (B, 1, F+3)
+        if img_feat is not None:
+            img_feat = img_feat.view(batch_size, 1, -1)
+            ctx_emb = torch.cat([ctx_emb, img_feat], dim=-1)  # (B, 1, F+3+1000)
+            
         x = self.concat1(ctx_emb,x)
         final_emb = x.permute(1,0,2)
         final_emb = self.pos_emb(final_emb)
