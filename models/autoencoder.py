@@ -32,8 +32,6 @@ class AutoEncoder(Module):
             )
         )
         
-        
-
     def encode(self, batch,node_type):
         z = self.encoder.get_latent(batch, node_type)
         return z
@@ -69,7 +67,7 @@ class AutoEncoder(Module):
         loss = self.diffusion.get_loss(y_t.cuda(), feat_x_encoded)
         return loss
     
-    def get_loss(self, batch, node_type=None, latent=None, img_feat=None):
+    def get_loss(self, batch, node_type=None, latent=None, img_feat=None, traj_feat=None):
         # (first_history_index,
         #  x_t, y_t, x_st_t, y_st_t,
         #  neighbors_data_st,
@@ -80,5 +78,5 @@ class AutoEncoder(Module):
         # loss = self.diffusion.get_loss(y_t.cuda(), feat_x_encoded)
         if self.config.embed_latent:
             latent = self.latent_embed(latent)
-        loss = self.diffusion.get_loss(batch.cuda(), latent, img_feat=img_feat)
+        loss = self.diffusion.get_loss(batch.cuda(), latent, img_feat=img_feat, traj_feat=traj_feat)
         return loss

@@ -12,6 +12,7 @@ import torch
 from models.autoencoder import AutoEncoder
 from mid import load_data
 import pickle
+import scipy
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -23,6 +24,8 @@ def parse_args():
     parser.add_argument('--embed_latent', action='store_true', help='whether to output attention in encoder')
     parser.add_argument('--generate', action='store_true', help='whether to output attention in encoder')
     parser.add_argument('--use_img', action='store_true', help='whether to output attention in encoder')
+    parser.add_argument('--use_traj', action='store_true', help='whether to output attention in encoder')
+    parser.add_argument('--inter_seconds', type=int, default=50)
 
     return parser.parse_args()
 
@@ -127,7 +130,20 @@ steps = 5
 #     break
 
 
-
+# MTL
+current_minmax = [
+    # (45.230416, 45.9997262293), (-74.31479102, -72.81248199999999), 
+    # (45.230416, 45.9997262293), (-74.31479102, -72.81248199999999),  \
+    (0.9999933186918497, 1198.999998648651), # time
+    (0.0, 50118.17550774085), # dist
+    (0.0, 49.95356703911097), # speed
+    (-9.99348698095659, 9.958323482935628), #acc
+    (-39.64566646191948, 1433.3438889109589), #jerk
+    (0.0, 359.95536847383516)] #bearing
+# # geolife
+# current_minmax = [(18.249901, 55.975593), (-122.3315333, 126.998528), (18.249901, 55.975593), (-122.3315333, 126.998528), \
+#     (0.9999933186918497, 1198.999998648651), (0.0, 50118.17550774085), (0.0, 49.95356703911097), (-9.99348698095659, 9.958323482935628), (-39.64566646191948, 1433.3438889109589), (0.0, 359.95536847383516)]
+                
 
 
 
@@ -144,191 +160,224 @@ head = np.array([
 ])
 
 
+def old_list():
+    model_dir_list=[
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_100.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_200.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_400.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_800.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_1600.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_3200.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_6400.pt",
+    ] 
+    filename='1106mtl_mid_speed_lr1e3_bs256.png'
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs1024/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs1024/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs1024/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs1024/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs2048/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs2048/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs2048/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_bs2048/ckpt/unet_8000.pt",
+    ] 
+    filename='1106mtl_mid_speed_lr1e3_bs1024_bs2048.png'
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1006_cond6_lr1e4_bs256/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e4_bs256/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e4_bs256/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e4_bs256/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr5e4_bs256/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr5e4_bs256/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr5e4_bs256/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr5e4_bs256/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr5e4_bs256/ckpt/unet_11000.pt",
+    ] 
+    filename='1106mtl_mid_speed_lr1e4_lr5e4.png'
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_32000.pt",
+        "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_40000.pt"
+    ] 
+    head = np.array([[0.0000e+00],[1.0000e+00, ],[2.0000e+00, ],[3.0000e+00,]])
+    filename='1107mtl_mid_speed_cond1_class0.png'
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1007_cond6_lr1e3_bs256/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1007_cond6_lr1e3_bs256/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1007_cond6_lr1e3_bs256/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1007_cond6_lr1e3_bs256/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1007_cond6_lr1e3_bs256/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1007_cond6_lr1e3_bs256/ckpt/unet_21000.pt",
+    ] 
+    filename='1107mtl_mid_speed_lr1e3_bs256_class0.png'
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_100.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_200.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_400.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_30000.pt",
+    ] 
+    filename='1107mtl_mid_speed_len24.png'
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_100.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_200.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_400.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_30000.pt",
+    ] 
+    filename='1107mtl_mid_speed_len50.png'
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_100.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_200.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_400.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_30000.pt",
+    ] 
+    filename='1107mtl_mid_speed_len100.png'
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_32000.pt",
+        "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_50000.pt",
+    ] 
+    filename='1107mtl_mid_speed_len400.png'
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_32000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_50000.pt",
+    ] 
+    filename='1109mtl_mid_speed_lr1e3.png'
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_32000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_50000.pt",
+    ] 
+    filename='1109mtl_mid_speed_lr1e4.png'
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_32000.pt",
+        "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_50000.pt",
+    ] 
+    filename='1109mtl_mid_speed_lr5e4.png'
+
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_32000.pt",
+    ] 
+    filename='1111mtl_mid_speed_embedlatent_cond1_class0.png'
+    # filename='1111mtl_mid_speed_embedlatent_cond1_class0_ddpm.png'
+    # head = np.array([[0.0000e+00],[1.0000e+00, ],[2.0000e+00, ],[3.0000e+00,]])
+
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_1000.pt",
+        "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_2000.pt",
+        "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_32000.pt",
+    ] 
+    filename='1111mtl_mid_speed_embedlatent_cond6.png'
+
+
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1109_cond1_lr1e4_bs256_embedlatent/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1109_cond1_lr1e4_bs256_embedlatent/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1109_cond1_lr1e4_bs256_embedlatent/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1109_cond1_lr1e4_bs256_embedlatent/ckpt/unet_32000.pt",
+    ] 
+    n_data = 10000
+    head = torch.from_numpy(np.random.randint(0,4,[n_data,1])).float()
+
+    model_dir_list=[
+        "/home/yichen/MID/results/1109_cond6_lr1e4_bs256_embedlatent/ckpt/unet_4000.pt",
+        "/home/yichen/MID/results/1109_cond6_lr1e4_bs256_embedlatent/ckpt/unet_8000.pt",
+        "/home/yichen/MID/results/1109_cond6_lr1e4_bs256_embedlatent/ckpt/unet_16000.pt",
+        "/home/yichen/MID/results/1109_cond6_lr1e4_bs256_embedlatent/ckpt/unet_32000.pt",
+    ] 
+
+
+# 1124
 model_dir_list=[
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_100.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_200.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_400.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_800.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_1600.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_3200.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs256/ckpt/unet_6400.pt",
+    "/home/yichen/MID/results/1120_cond6_lr1e4_bs1024_embedlatent_len202/ckpt/unet_1000.pt",
+    "/home/yichen/MID/results/1120_cond6_lr1e4_bs1024_embedlatent_len202/ckpt/unet_2000.pt",
+    "/home/yichen/MID/results/1120_cond6_lr1e4_bs1024_embedlatent_len202/ckpt/unet_4000.pt",
+    "/home/yichen/MID/results/1120_cond6_lr1e4_bs1024_embedlatent_len202/ckpt/unet_8000.pt",
+    "/home/yichen/MID/results/1120_cond6_lr1e4_bs1024_embedlatent_len202/ckpt/unet_16000.pt",
 ] 
-filename='1106mtl_mid_speed_lr1e3_bs256.png'
 
+
+# model_dir_list=[
+#     "/home/yichen/MID/results/1120_cond8_lr1e4_bs1024_embedlatent_len202/ckpt/unet_1000.pt",
+#     "/home/yichen/MID/results/1120_cond8_lr1e4_bs1024_embedlatent_len202/ckpt/unet_2000.pt",
+#     "/home/yichen/MID/results/1120_cond8_lr1e4_bs1024_embedlatent_len202/ckpt/unet_4000.pt",
+#     "/home/yichen/MID/results/1120_cond8_lr1e4_bs1024_embedlatent_len202/ckpt/unet_8000.pt",
+#     "/home/yichen/MID/results/1120_cond8_lr1e4_bs1024_embedlatent_len202/ckpt/unet_16000.pt",
+# ] 
+
+# 1203
 model_dir_list=[
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs1024/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs1024/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs1024/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs1024/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs2048/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs2048/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs2048/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_bs2048/ckpt/unet_8000.pt",
+    "/home/yichen/MID/results/1125_cond6_lr1e4_bs1024_embedlatent_len600/ckpt/unet_1000.pt",
+    "/home/yichen/MID/results/1125_cond6_lr1e4_bs1024_embedlatent_len600/ckpt/unet_2000.pt",
+    "/home/yichen/MID/results/1125_cond6_lr1e4_bs1024_embedlatent_len600/ckpt/unet_4000.pt",
+    "/home/yichen/MID/results/1125_cond6_lr1e4_bs1024_embedlatent_len600/ckpt/unet_8000.pt",
+    "/home/yichen/MID/results/1125_cond6_lr1e4_bs1024_embedlatent_len600/ckpt/unet_16000.pt",
 ] 
-filename='1106mtl_mid_speed_lr1e3_bs1024_bs2048.png'
-
-model_dir_list=[
-    "/home/yichen/MID/results/1006_cond6_lr1e4_bs256/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e4_bs256/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e4_bs256/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e4_bs256/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr5e4_bs256/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr5e4_bs256/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr5e4_bs256/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr5e4_bs256/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr5e4_bs256/ckpt/unet_11000.pt",
-] 
-filename='1106mtl_mid_speed_lr1e4_lr5e4.png'
-
-model_dir_list=[
-    "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_32000.pt",
-    "/home/yichen/MID/results/1007_cond1_lr1e3_bs256/ckpt/unet_40000.pt"
-] 
-head = np.array([[0.0000e+00],[1.0000e+00, ],[2.0000e+00, ],[3.0000e+00,]])
-filename='1107mtl_mid_speed_cond1_class0.png'
-
-model_dir_list=[
-    "/home/yichen/MID/results/1007_cond6_lr1e3_bs256/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1007_cond6_lr1e3_bs256/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1007_cond6_lr1e3_bs256/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1007_cond6_lr1e3_bs256/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1007_cond6_lr1e3_bs256/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1007_cond6_lr1e3_bs256/ckpt/unet_21000.pt",
-] 
-filename='1107mtl_mid_speed_lr1e3_bs256_class0.png'
-
-model_dir_list=[
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_100.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_200.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_400.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len24/ckpt/unet_30000.pt",
-] 
-filename='1107mtl_mid_speed_len24.png'
-
-model_dir_list=[
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_100.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_200.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_400.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len50/ckpt/unet_30000.pt",
-] 
-filename='1107mtl_mid_speed_len50.png'
-
-model_dir_list=[
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_100.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_200.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_400.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len100/ckpt/unet_30000.pt",
-] 
-filename='1107mtl_mid_speed_len100.png'
-
-model_dir_list=[
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_32000.pt",
-    "/home/yichen/MID/results/1006_cond6_lr1e3_len400/ckpt/unet_50000.pt",
-] 
-filename='1107mtl_mid_speed_len400.png'
-
-model_dir_list=[
-    "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_32000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr1e3_bs256/ckpt/unet_50000.pt",
-] 
-filename='1109mtl_mid_speed_lr1e3.png'
-
-model_dir_list=[
-    "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_32000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr1e4_bs256/ckpt/unet_50000.pt",
-] 
-filename='1109mtl_mid_speed_lr1e4.png'
-
-model_dir_list=[
-    "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_32000.pt",
-    "/home/yichen/MID/results/1008_cond6_lr5e4_bs256/ckpt/unet_50000.pt",
-] 
-filename='1109mtl_mid_speed_lr5e4.png'
-
-
-model_dir_list=[
-    "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1009_cond1_lr1e4_bs256_embedlatent/ckpt/unet_32000.pt",
-] 
-filename='1111mtl_mid_speed_embedlatent_cond1_class0.png'
-# filename='1111mtl_mid_speed_embedlatent_cond1_class0_ddpm.png'
-# head = np.array([[0.0000e+00],[1.0000e+00, ],[2.0000e+00, ],[3.0000e+00,]])
-
-
-model_dir_list=[
-    "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_1000.pt",
-    "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_2000.pt",
-    "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1009_cond6_lr1e4_bs256_embedlatent/ckpt/unet_32000.pt",
-] 
-filename='1111mtl_mid_speed_embedlatent_cond6.png'
-
-
-
-model_dir_list=[
-    "/home/yichen/MID/results/1109_cond1_lr1e4_bs256_embedlatent/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1109_cond1_lr1e4_bs256_embedlatent/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1109_cond1_lr1e4_bs256_embedlatent/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1109_cond1_lr1e4_bs256_embedlatent/ckpt/unet_32000.pt",
-] 
-n_data = 10000
-head = torch.from_numpy(np.random.randint(0,4,[n_data,1])).float()
-
-model_dir_list=[
-    "/home/yichen/MID/results/1109_cond6_lr1e4_bs256_embedlatent/ckpt/unet_4000.pt",
-    "/home/yichen/MID/results/1109_cond6_lr1e4_bs256_embedlatent/ckpt/unet_8000.pt",
-    "/home/yichen/MID/results/1109_cond6_lr1e4_bs256_embedlatent/ckpt/unet_16000.pt",
-    "/home/yichen/MID/results/1109_cond6_lr1e4_bs256_embedlatent/ckpt/unet_32000.pt",
-] 
-head = np.load("/home/yichen/MID/1114_heads_tgt.npy")
-head = torch.from_numpy(head).float()
-
+filename='1204mtl_mid_speed_embedlatent_cond6.png'
+head = np.array([
+    [0.0000e+00, 6.1595e+01, 2.0000e-01, 600., 1.0266e-01, 1.0266e-01],
+    [1.0000e+00, 6.3451e+00, 2.0000e-01, 600., 1.0575e-02, 1.0575e-02],
+    [2.0000e+00, 4.4909e+01, 2.0000e-01, 600., 7.4848e-02, 7.4848e-02],
+    [3.0000e+00, 1.7232e+01, 1.3867e-01, 550。, 4.1423e-02, 4.1423e-02],
+])
 
 
 if not args.generate:
@@ -346,26 +395,26 @@ if not args.generate:
         new_traj = agent.model.generate(head, num_points=args.traj_len, sample=2, bestof=True, sampling=sampling, step=100//steps) # B * 20 * 12 * 2
         new_traj = new_traj[0,0] # (20, 4, 200, 2)
         
-        lat_min,lat_max = (0.0, 49.95356703911097)
-        lon_min,lon_max = (0.0, 49.95356703911097)
+        if args.inter_seconds==5:
+            lat_min,lat_max = (0.0, 49.95356703911097)
+            lon_min,lon_max = (0.0, 49.95356703911097)
+        elif args.inter_seconds==1:
+            lat_min,lat_max = (0.0, 80.0)
+            lon_min,lon_max = (0.0, 80.0)
         new_traj[:,0] = new_traj[:,0] * (lat_max-lat_min) + lat_min
-        new_traj[:,1] = new_traj[:,1] * (lon_max-lon_min) + lon_min        
+        new_traj[:,1] = new_traj[:,1] * (lon_max-lon_min) + lon_min   
+        pdb.set_trace()
+             
         # start_pt = [36,72]
         tmp_x = 36
         tmp_y = 72
         new_new_traj = []
         new_new_traj.append((tmp_x,tmp_y))
         for i in range(len(new_traj)):
-            tmp_x += new_traj[i,0]*5/111/1000
-            tmp_y += new_traj[i,1]*5/111/1000
+            tmp_x += new_traj[i,0]*args.inter_seconds/111/1000
+            tmp_y += new_traj[i,1]*args.inter_seconds/111/1000
             new_new_traj.append((tmp_x,tmp_y))
         new_traj = np.array(new_new_traj)
-        # else:
-        #     lat_min,lat_max = (18.249901, 55.975593)
-        #     lon_min,lon_max = (-122.3315333, 126.998528)
-        #     new_traj[:,0] = new_traj[:,0] * (lat_max-lat_min) + lat_min
-        #     new_traj[:,1] = new_traj[:,1] * (lon_max-lon_min) + lon_min
-        # # print(new_traj)
         Gen_traj.append(new_traj)
 
     fig = plt.figure(figsize=(12,12))
@@ -378,9 +427,20 @@ if not args.generate:
     plt.show()
 
 else:
+    
+    # head = np.load("/home/yichen/MID/1114_heads_tgt.npy")
+    head = np.load("/home/yichen/MID/1203_heads_tgt.npy")
+    head = torch.from_numpy(head).float()
+    print("Head shape: ", head.shape) # [55866, 6]
+
     bs = 128
     for model_dir in model_dir_list:
-        filename = '1120_%s_epoch%s_len%d'%(model_dir.split('/')[-3],model_dir.split('_')[-1],args.traj_len)
+        filename = 'outputs/1204_%s_epoch%s_len%d_%ds_1203heads'%(
+            model_dir.split('/')[-3],
+            model_dir.split('_')[-1],
+            args.traj_len,
+            args.inter_seconds
+        )
         filename = filename.replace(".pt","")
         
         ckpt_dir = model_dir
@@ -390,27 +450,107 @@ else:
         val_loader = torch.utils.data.DataLoader(head, batch_size=bs, drop_last=False)
         
         Gen_traj = []
+        Gen_feat = []
         Gen_head = head
+        eps = 1e-9
         for batch_head in val_loader:
             batch_head = batch_head.cuda()
             new_v = agent.model.generate(batch_head, num_points=args.traj_len, sample=2, bestof=True, sampling=sampling, step=100//steps) # (2, bs, 200, 2)
             new_v = new_v[0] # (bs, 200, 2)
 
-            v_min,v_max = (0.0, 49.95356703911097)
+            if args.inter_seconds == 5:
+                v_min,v_max = (0.0, 49.95356703911097)
+            elif args.inter_seconds == 1:
+                v_min,v_max = (0.0, 80.0)
+            else:
+                raise NotImplemented
+            
             new_v = new_v * (v_max-v_min) + v_min
-            new_st = new_v*5/111/1000 
+            new_st = new_v*args.inter_seconds/111/1000 
+            
+            n_timestep = new_v.shape[1]-2
+            abs_v = np.sqrt(np.square(new_v).sum(axis=-1))
+            new_dist = abs_v * args.inter_seconds
+            new_a = np.diff(abs_v, axis=1)/args.inter_seconds                
+            new_br = (np.arctan(new_v[:,:,1]/new_v[:,:,0]+eps)/np.pi*180 + 360) % 360
+            
+            abs_v = abs_v[:,:n_timestep]
+            new_dist = new_dist[:,:n_timestep]
+            new_a = new_a[:,:n_timestep]
+            
+            
+            def compute_bearing(p1, p2):
+                y = math.sin(math.radians(p2[1]) - math.radians(p1[1])) * math.radians(math.cos(p2[0]))
+                x = math.radians(math.cos(p1[0])) * math.radians(math.sin(p2[0])) - \
+                    math.radians(math.sin(p1[0])) * math.radians(math.cos(p2[0])) \
+                    * math.radians(math.cos(p2[1]) - math.radians(p1[1]))
+                # Convert radian from -pi to pi to [0, 360] degree
+                return (math.atan2(y, x) * 180. / math.pi + 360) % 360
+
+            def compute_bearing_rate(bearing1, bearing2):
+                return abs(bearing1 - bearing2)
+            
+            
+            if args.inter_seconds == 5:
+                new_br = new_br[:,:n_timestep]
+                new_j = np.diff(new_a, axis=1)/args.inter_seconds
+                is_real = np.ones_like(abs_v)
+                feat_array = np.stack([np.ones_like(abs_v)*args.inter_seconds,new_dist,abs_v,new_a,new_j,new_br,is_real], axis=-1)
+            elif args.inter_seconds == 1:
+                new_br_rate = np.diff(new_br, axis=1)/args.inter_seconds
+                new_br = new_br[:,:n_timestep]
+                new_br_rate = new_br_rate[:,:n_timestep]
+                feat_array = np.stack([np.ones_like(abs_v)*args.inter_seconds,new_dist,abs_v,new_a,new_br,new_br_rate], axis=-1)
+            Gen_feat.append(feat_array)
             
             tmp_x = 36+np.random.randn()/100
             tmp_y = 72+np.random.randn()/100
             cum_st = np.cumsum(new_st, axis=1)
-            new_traj = np.ones([new_v.shape[0], 200, 2]) * [tmp_x, tmp_y]
+            new_traj = np.ones([new_v.shape[0], args.traj_len, 2]) * [tmp_x, tmp_y]
             new_traj = new_traj + cum_st
 
+            new_traj = new_traj[:,:n_timestep]
             Gen_traj.append(new_traj)
             
-        Gen_traj = np.concatenate(Gen_traj)
+        Gen_traj = np.concatenate(Gen_traj,axis=0)
+        Gen_feat = np.concatenate(Gen_feat,axis=0)
+        
+        # normalize 
+        if args.inter_seconds == 5:
+            for index, item in enumerate(current_minmax):
+                pdb.set_trace()
+                if index == 0 or index == 5: # time and bearing
+                    continue
+                Gen_feat[:, :, index] = (Gen_feat[:, :, index] - item[0])/(item[1] - item[0]) 
+        elif args.inter_seconds == 1:
+            
+            
+            # def running_mean_convolve(x, N):
+            #     return np.convolve(x, np.ones(N) / float(N), 'valid')
+            # def running_mean_cumsum(x, N):
+            #     cumsum = np.cumsum(np.insert(x, 0, 0))
+            #     return (cumsum[N:] - cumsum[:-N]) / float(N)
+            # def running_mean_uniform_filter1d(x, N):
+            #     return scipy.ndimage.uniform_filter1d(x, N, mode='constant', origin=-(N//2))[:-(N-1)]
+
+            N=10
+            pad_array = np.tile(Gen_feat[:,-1:,:],[1,N+1,1])
+            Gen_feat = np.concatenate([Gen_feat,pad_array], axis=1)
+            cumsum = np.cumsum(Gen_feat, axis=1)
+            cumsum = np.concatenate([np.zeros([cumsum.shape[0],1,6]),cumsum], axis=1)
+            Gen_feat = (cumsum[:,N:] - cumsum[:,:-N]) / float(N)
+            print(Gen_feat.shape)
+            
+            max_list = np.array([5. , 80. , 80. , 79.62211779 , 179.98863883, 179.96395057])
+            min_list = np.array([0. , 0.  , 0.  , -72.77655734, 0.          , 0.          ])
+            for i in range(6):
+                Gen_feat[:,:,i] = (Gen_feat[:,:,i]-min_list[i])/(max_list[i]-min_list[i])
+        else:
+            raise NotImplemented
+                
         with open(filename+".npy", "wb") as f:
-            pickle.dump([Gen_traj,head], f)
+            pickle.dump([Gen_traj, Gen_feat, Gen_head], f)
+
             
         fig,ax = plt.subplots()
         for i in range(len(Gen_traj)):

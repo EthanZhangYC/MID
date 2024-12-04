@@ -64,7 +64,7 @@ class DiffusionTraj(Module):
         self.net = net
         self.var_sched = var_sched
 
-    def get_loss(self, x_0, context, t=None, img_feat=None):
+    def get_loss(self, x_0, context, t=None, img_feat=None, traj_feat=None):
 
         batch_size, _, point_dim = x_0.size()
         if t == None:
@@ -78,7 +78,7 @@ class DiffusionTraj(Module):
 
         e_rand = torch.randn_like(x_0).cuda()  # (B, N, d)
 
-        e_theta = self.net(c0 * x_0 + c1 * e_rand, beta=beta, context=context, img_feat=img_feat)
+        e_theta = self.net(c0 * x_0 + c1 * e_rand, beta=beta, context=context, img_feat=img_feat, traj_feat=traj_feat)
         loss = F.mse_loss(e_theta.view(-1, point_dim), e_rand.view(-1, point_dim), reduction='mean')
         return loss
 
@@ -124,6 +124,7 @@ class DiffusionTraj(Module):
             else:
                 traj_list.append(traj[0])
         return torch.stack(traj_list)
+
 
 class TrajNet(Module):
 
@@ -177,6 +178,8 @@ class TransformerConcatLinear(Module):
         #     context_dim = 1128
         if config.use_img:
             ctx_dim = context_dim+3+1000
+        elif config.use_traj:
+            ctx_dim = context_dim+3+64
         else:
             ctx_dim = context_dim+3
             
@@ -193,7 +196,7 @@ class TransformerConcatLinear(Module):
         self.linear = ConcatSquashLinear(context_dim//2, 2, ctx_dim)
         #self.linear = nn.Linear(128,2)
 
-    def forward(self, x, beta, context, img_feat=None):
+    def forward(self, x, beta, context, img_feat=None, traj_feat=None):
         batch_size = x.size(0)
         beta = beta.view(batch_size, 1, 1)          # (B, 1, 1)
         context = context.view(batch_size, 1, -1)   # (B, 1, F)
@@ -203,6 +206,9 @@ class TransformerConcatLinear(Module):
         if img_feat is not None:
             img_feat = img_feat.view(batch_size, 1, -1)
             ctx_emb = torch.cat([ctx_emb, img_feat], dim=-1)  # (B, 1, F+3+1000)
+        if traj_feat is not None:
+            traj_feat = traj_feat.view(batch_size, 1, -1)
+            ctx_emb = torch.cat([ctx_emb, traj_feat], dim=-1)  # (B, 1, F+3+64)
             
         x = self.concat1(ctx_emb,x)
         final_emb = x.permute(1,0,2)

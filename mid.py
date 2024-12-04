@@ -36,7 +36,119 @@ from torchvision import transforms
 from PIL import Image
 from typing import Optional, List
 
+from einops import rearrange, repeat, pack, unpack
+from einops.layers.torch import Rearrange
 
+
+
+class SamePadConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, dilation=1, groups=1):
+        super().__init__()
+        self.receptive_field = (kernel_size - 1) * dilation + 1
+        padding = self.receptive_field // 2
+        self.conv = nn.Conv1d(
+            in_channels, out_channels, kernel_size,
+            padding=padding,
+            dilation=dilation,
+            groups=groups
+        )
+        self.remove = 1 if self.receptive_field % 2 == 0 else 0
+        
+    def forward(self, x):
+        out = self.conv(x)
+        if self.remove > 0:
+            out = out[:, :, : -self.remove]
+        return out
+    
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size, dilation, final=False):
+        super().__init__()
+        self.conv1 = SamePadConv(in_channels, out_channels, kernel_size, dilation=dilation)
+        self.conv2 = SamePadConv(out_channels, out_channels, kernel_size, dilation=dilation)
+        self.projector = nn.Conv1d(in_channels, out_channels, 1) if in_channels != out_channels or final else None
+    
+    def forward(self, x):
+        residual = x if self.projector is None else self.projector(x)
+        x = F.gelu(x)
+        x = self.conv1(x)
+        x = F.gelu(x)
+        x = self.conv2(x)
+        return x + residual
+
+class DilatedConvEncoder(nn.Module):
+    def __init__(self, in_channels, channels, kernel_size):
+        super().__init__()
+        self.net = nn.Sequential(*[
+            ConvBlock(
+                channels[i-1] if i > 0 else in_channels,
+                channels[i],
+                kernel_size=kernel_size,
+                #dilation=min(2**i,1024),
+                dilation=2**i,
+                final=(i == len(channels)-1)
+            )
+            for i in range(len(channels))
+        ])
+        
+    def forward(self, x):
+        return self.net(x)
+    
+class TSEncoder_new(nn.Module):
+    def __init__(self, input_dims=7, output_dims=64, hidden_dims=64, depth=10, mask_mode='binomial', n_class=4, reconstruct_dim=2):
+        super().__init__()
+        self.input_dims = input_dims
+        self.output_dims = output_dims
+        self.hidden_dims = hidden_dims
+        self.mask_mode = mask_mode
+        
+        self.input_fc = nn.Linear(input_dims, hidden_dims)
+        self.feature_extractor = DilatedConvEncoder(
+            hidden_dims,
+            [hidden_dims] * depth + [output_dims],
+            kernel_size=3
+        )
+        self.repr_dropout = nn.Dropout(p=0.1)
+        self.fc = nn.Sequential(
+            nn.Linear(output_dims, 64),
+            nn.ReLU(),
+            nn.Dropout(p=0.1),
+            nn.Linear(64, n_class)
+        )
+        
+    def forward(self, x, args=None, mask_early=False, mask_late=False):  
+        nan_mask = ~x.isnan().any(axis=-1)
+        ori_mask=None
+        
+        x = self.input_fc(x)  # B x T x Ch
+        # conv encoder
+        x = x.transpose(1, 2)  # B x Ch x T
+        x = self.feature_extractor(x)  # B x Co x T
+        x = x.transpose(1, 2)  # B x T x Co
+        ori_feat = x.clone()
+        
+        feat = x = F.avg_pool1d(
+            x.transpose(1, 2),
+            kernel_size = x.size(1),
+        ).transpose(1, 2).squeeze(1)
+        
+        logits=con_logits=va_logits=ori_mask=pred_each=None
+        return logits, feat, ori_feat, con_logits, va_logits, ori_mask, pred_each
+        
+class Classifier_clf(nn.Module):
+    def __init__(self, n_class=4, input_dim=64):
+        super(Classifier_clf, self).__init__()
+        self.fc1 = nn.Linear(input_dim, 64)
+        self.fc2 = nn.Linear(64, n_class)
+        self.dropout_p=0.1
+        self.dropout = nn.Dropout(p=self.dropout_p)
+
+    def forward(self, x, aux_feat=None): 
+        x = self.dropout(F.relu(self.fc1(x)))
+        feat = x
+        x = self.fc2(x)
+        return x
+
+        
 def get_label(single_dataset,idx,label_dict):
     label = single_dataset[idx][1].item()
     return label
@@ -269,74 +381,107 @@ class create_single_dataset(torch.utils.data.Dataset):
         
     def __len__(self):
         return len(self.imgs)
+
+class create_single_dataset_img(torch.utils.data.Dataset):
+    def __init__(self, imgs, transform):
+        super(create_single_dataset_img, self).__init__()
+        self.imgs = imgs
+        self.transform = transform
+        
+    def __getitem__(self, index):
+        img_dir = self.imgs[index]
+        img = Image.open(img_dir).convert('RGB')
+        if self.transform is not None:
+            img = self.transform(img)
+        return img
+        
+    def __len__(self):
+        return len(self.imgs)
     
 def load_data(config):
     batch_sizes = config.batch_size
     traj_length = config.traj_len
+    # base_dir = "/home/xieyuan/Traj2Image-10.05/datas/"
+    base_dir = "/home/yichen/data/xieyuan_datas/"
+    assert config.traj_len<=600
+    # assert not config.data.filter_area
     
+    # "/home/xieyuan/Traj2Image-10.05/datas/cnn_data/traj2former_6class_segments_normalize_7x600dim.pickle"
+    # "/home/xieyuan/Traj2Image-10.05/data_MTL/cnn_data/mtl_segment650_4class_650x7dim_normalize_latlon.pickle"
+    traj_init_filename = base_dir + 'cnn_data/traj2image_6class_fixpixel_fixlat3_insert1s_train&test_cnn_0607_unnormalize.pickle'
+    with open(traj_init_filename, "rb") as f:
+        traj_dataset = pickle.load(f)
+    train_init_traj, test_init_traj = traj_dataset
+    train_x_ori, train_y_ori = map(list, zip(*train_init_traj)) 
+    for i in range(len(train_x_ori)):
+        tmp_trip_length = len(train_x_ori[i])
+        if tmp_trip_length <= traj_length:
+            train_x_ori[i] = np.pad(train_x_ori[i], ((0, traj_length - tmp_trip_length), (0, 0)), 'constant')
+        else:
+            train_x_ori[i] = train_x_ori[i][:traj_length]
+    train_x_ori, train_y_ori = np.array(train_x_ori), np.array(train_y_ori)
+    
+    total_input_new = np.zeros((len(train_x_ori), 1, min(traj_length,600), 8))
+    for i in range(len(train_x_ori)):
+        total_input_new[i, 0, :, 0] = train_x_ori[i, :, 5]    #x
+        total_input_new[i, 0, :, 1] = train_x_ori[i, :, 6]    #y
+        total_input_new[i, 0, :, 2] = (train_x_ori[i, :, 0]!=0).astype(float)  #delta_time
+        total_input_new[i, 0, 0, 2] = 1.
+        total_input_new[i, 0, :, 3] = train_x_ori[i, :, 1]    #dist
+        total_input_new[i, 0, :, 4] = train_x_ori[i, :, 1]    #speed
+        total_input_new[i, 0, :, 5] = train_x_ori[i, :, 3]    #acc
+        total_input_new[i, 0, :, 6] = train_x_ori[i, :, 2]    #bearing
+        total_input_new[i, 0, :, 7] = train_x_ori[i, :, 4]    #bearing-rate
+    train_x_ori = total_input_new.squeeze(1)
+    
+    # max_list = np.max(train_x_ori, axis=(0,1)) # [55.976195, 126.998528  , 1. , 80. , 79.62211779 , 179.98863883, 179.96395057]
+    # min_list = np.min(train_x_ori, axis=(0,1)) # [18.249901, -122.3315333, 1. , 0.  , -72.77655734, 0.          , 0.          ]
+    max_list = np.array([55.976195, 126.998528  , 1. , 80. , 80. , 79.62211779 , 179.98863883, 179.96395057])
+    min_list = np.array([18.249901, -122.3315333, 0. , 0.  , 0.  , -72.77655734, 0.          , 0.          ])
+    
+    # normalize xy
+    # min_max_list = [(18.249901, 55.975593),(-122.3315333, 126.998528)]
+    for i in range(8):
+        if i==2:
+            continue
+        train_x_ori[:,:,i] = (train_x_ori[:,:,i]-min_list[i])/(max_list[i]-min_list[i])
+       
+    pad_mask_source_train_ori = train_x_ori[:,:,2]==0
+    train_x_ori[pad_mask_source_train_ori] = 0.
+        
+        
     if config.use_img:
-        # assert not config.data.filter_area
-        base_dir = "/home/xieyuan/Traj2Image-10.05/datas/"
-        base_dir = "/home/yichen/data/"
-    
-        traj_init_filename = base_dir + 'cnn_data/traj2image_6class_fixpixel_fixlat3_insert1s_train&test_cnn_0607.pickle'
-        with open(traj_init_filename, "rb") as f:
-            traj_dataset = pickle.load(f)
-        train_init_traj, test_init_traj = traj_dataset
-        train_x_ori, train_y_ori = map(list, zip(*train_init_traj)) 
-        for i in range(len(train_x_ori)):
-            tmp_trip_length = len(train_x_ori[i])
-            if tmp_trip_length < traj_length:
-                train_x_ori[i] = np.pad(train_x_ori[i], ((0, 0), (0, traj_length - tmp_trip_length)), 'constant')
-            else:
-                train_x_ori[i] = train_x_ori[i][:traj_length]
-        train_x_ori, train_y_ori = np.array(train_x_ori), np.array(train_y_ori)
-        
-        total_input_new = np.zeros((len(train_x_ori), 1, traj_length, 8))
-        for i in range(len(train_x_ori)):
-            total_input_new[i, 0, :, 0] = train_x_ori[i, :, 5]    #x
-            total_input_new[i, 0, :, 1] = train_x_ori[i, :, 6]    #y
-            total_input_new[i, 0, :, 2] = (train_x_ori[i, :, 0]!=0).astype(float)  #delta_time
-            total_input_new[i, 0, 0, 2] = 1.
-            total_input_new[i, 0, 0, 3] = 1.
-            total_input_new[i, 0, :, 3] = train_x_ori[i, :, 1]    #speed
-            total_input_new[i, 0, :, 4] = train_x_ori[i, :, 3]    #acc
-            total_input_new[i, 0, :, 5] = train_x_ori[i, :, 2]    #bearing
-            total_input_new[i, 0, :, 6] = train_x_ori[i, :, 4]    #bearing-rate
-        train_x_ori = total_input_new.squeeze(1)
-        
-        min_max_list = [(18.249901, 55.975593),(-122.3315333, 126.998528)]
-        for i in range(2):
-            train_x_ori[:,:,i] = (train_x_ori[:,:,i] - min_max_list[i][0])/(min_max_list[i][1]-min_max_list[i][0])
-        
         imgs_train = []
         img_dir = base_dir + "OpenStreetMap/global_map_tiles_satellite_zoom18_size50_train_size250/*.png"
         for file_name in glob.glob(img_dir, recursive=True):
             imgs_train.append(file_name)
         print('train:',len(imgs_train))#,'val:',len(tar_imgs_val))
-    
     else:
-        # batch_sizes = config.training.batch_size
-        filename = '/home/yichen/TS2Vec/datafiles/Geolife/traindata_4class_xy_traintest_interpolatedNAN_5s_trip20_new_001meters_withdist_aligninterpolation_InsertAfterSeg_Both_11dim_doubletest_0218.pickle'
-        with open(filename, 'rb') as f:
-            kfold_dataset, X_unlabeled = pickle.load(f)
-        dataset = kfold_dataset
-
-        train_x = dataset[1].squeeze(1)
-        train_y = dataset[3]
-        train_x = train_x[:,:,4:]   
-        pad_mask_source = train_x[:,:,0]==0
-        train_x[pad_mask_source] = 0.
-        
-        # if config.data.interpolated:
-        train_x_ori = dataset[1].squeeze(1)[:,:,2:]
-        # else:
-        # train_x_ori = dataset[0].squeeze(1)[:,:,2:]
-        train_y_ori = dataset[3]
         imgs_train = None
+    
+    # else:
+    #     # batch_sizes = config.training.batch_size
+    #     filename = '/home/yichen/TS2Vec/datafiles/Geolife/traindata_4class_xy_traintest_interpolatedNAN_5s_trip20_new_001meters_withdist_aligninterpolation_InsertAfterSeg_Both_11dim_doubletest_0218.pickle'
+    #     with open(filename, 'rb') as f:
+    #         kfold_dataset, X_unlabeled = pickle.load(f)
+    #     dataset = kfold_dataset
+
+    #     train_x = dataset[1].squeeze(1)
+    #     train_y = dataset[3]
+    #     train_x = train_x[:,:,4:]   
+    #     pad_mask_source = train_x[:,:,0]==0
+    #     train_x[pad_mask_source] = 0.
         
-    pad_mask_source_train_ori = train_x_ori[:,:,2]==0
-    train_x_ori[pad_mask_source_train_ori] = 0.
+    #     # if config.data.interpolated:
+    #     train_x_ori = dataset[1].squeeze(1)[:,:,2:]
+    #     # else:
+    #     # train_x_ori = dataset[0].squeeze(1)[:,:,2:]
+    #     train_y_ori = dataset[3]
+    #     imgs_train = None
+    
+    # pad_mask_source_train_ori = train_x_ori[:,:,2]==0
+    # train_x_ori[pad_mask_source_train_ori] = 0.
+        
         
     # class_id = 2
     # print('filtering class %d'%class_id)
@@ -365,6 +510,8 @@ def load_data(config):
         train_x_ori = train_x_ori[pad_mask_source_incomplete]
         train_y_ori = train_y_ori[pad_mask_source_incomplete]
         se_id = se_id[pad_mask_source_incomplete]
+        if config.use_img:
+            imgs_train = imgs_train[pad_mask_source_incomplete]
         
     class_dict={}
     for y in train_y_ori:
@@ -384,6 +531,7 @@ def load_data(config):
     
         
     if config.use_img:
+        assert not config.use_traj
         input_size = 224
         normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                             std=[0.229, 0.224, 0.225])
@@ -402,22 +550,107 @@ def load_data(config):
                 normalize
             ])
         }
-        trainset_mix = create_single_dataset(
-            imgs_train, 
-            train_x_ori,
-            train_y_ori,
-            se_id,
-            transform=transform_standard['train'],
-            part='train'
-        )
-        train_loader_source_ori = DataLoader(trainset_mix, batch_size=min(batch_sizes, len(trainset_mix)), num_workers=0, shuffle=True, drop_last=False)
-    
-    else:
+        
+        trainset_img = create_single_dataset_img(imgs_train, transform=transform_standard['train'])
+        train_loader_img = DataLoader(trainset_img, batch_size=min(batch_sizes, len(trainset_img)), num_workers=0, shuffle=False, drop_last=False)
+        
+        img_encoder = resnet50(True).cuda()
+        img_encoder.eval()
+        with torch.no_grad():
+            all_img_feat = []
+            for idx,imgs in enumerate(train_loader_img):
+                img_feat = img_encoder(imgs.cuda().float())
+                all_img_feat.append(img_feat.cpu())
+            all_img_feat = torch.cat(all_img_feat, dim=0)
+            
         train_dataset_ori = TensorDataset(
             torch.from_numpy(train_x_ori).to(torch.float),
             torch.from_numpy(se_id).to(torch.float),
+            all_img_feat,
+            torch.from_numpy(train_y_ori)
+        )
+        train_loader_source_ori = DataLoader(train_dataset_ori, batch_size=min(batch_sizes, len(train_dataset_ori)), num_workers=0, shuffle=True, drop_last=True)
+        
+        # trainset_mix = create_single_dataset(
+        #     imgs_train, 
+        #     train_x_ori,
+        #     train_y_ori,
+        #     se_id,
+        #     transform=transform_standard['train'],
+        #     part='train'
+        # )
+        # train_loader_source_ori = DataLoader(trainset_mix, batch_size=min(batch_sizes, len(trainset_mix)), num_workers=0, shuffle=True, drop_last=False)
+    
+    elif config.use_traj:
+        trainset_traj = TensorDataset(torch.from_numpy(train_x_ori).to(torch.float),torch.from_numpy(train_y_ori))
+        train_loader_traj = DataLoader(trainset_traj, batch_size=min(batch_sizes, len(trainset_traj)), num_workers=0, shuffle=False, drop_last=False)
+        
+        G = TSEncoder_new(input_dims=6).cuda()
+        F = Classifier_clf().cuda()
+        
+        ckpt_dir=config.resume
+        print('resuming model', ckpt_dir)
+        ckpt = torch.load(ckpt_dir, map_location='cuda:0')
+        G.load_state_dict(ckpt['G'])#, strict=False)
+        F.load_state_dict(ckpt['F2'])#, strict=False)
+        
+        G.eval()
+        F.eval()
+        with torch.no_grad():
+            all_traj_feat = []
+            top1 = AverageMeter('Acc', ':6.2f')
+            for idx,(trajs,labels) in enumerate(train_loader_traj):
+                _,traj_feat,_,_,_,_,_ = G(trajs[:,:,2:].cuda().float())
+                all_traj_feat.append(traj_feat.cpu())
+
+                y = F(traj_feat, None)
+                acc1, = accuracy(y.cpu(), labels)
+                top1.update(acc1.item(), y.size(0))
+                
+            print(traj_feat.shape)
+            print(' * Acc {top1.avg:.3f} '.format(top1=top1))
+            all_traj_feat = torch.cat(all_traj_feat, dim=0)
+            
+        train_dataset_ori = TensorDataset(
+            torch.from_numpy(train_x_ori).to(torch.float),
+            torch.from_numpy(se_id).to(torch.float),
+            all_traj_feat,
+            torch.from_numpy(train_y_ori)
+        )
+        train_loader_source_ori = DataLoader(train_dataset_ori, batch_size=min(batch_sizes, len(train_dataset_ori)), num_workers=0, shuffle=True, drop_last=True)
+    
+    else:
+        
+        batch_data_x = torch.from_numpy(train_x_ori).to(torch.float)
+        label = torch.from_numpy(train_y_ori).unsqueeze(1)
+        
+        trip_len = torch.sum(batch_data_x[:,:,2]!=0, dim=1).unsqueeze(1)
+        avg_feat = torch.sum(batch_data_x[:,:,3:5], dim=1) / (trip_len+1e-6)
+        total_dist = torch.sum(batch_data_x[:,:,3], dim=1).unsqueeze(1)
+        total_time = torch.sum(batch_data_x[:,:,2], dim=1).unsqueeze(1)
+        avg_dist = avg_feat[:,0].unsqueeze(1)
+        avg_speed = avg_feat[:,1].unsqueeze(1)
+        # trip_len = trip_len / self.config.traj_len
+        total_time = total_time / 3000.
+        if config.encoder_dim==1:
+            head = label.float()
+        elif config.encoder_dim==8:
+            head = torch.cat([label, total_dist, total_time, trip_len, avg_dist, avg_speed, sid, eid],dim=1)
+        else:
+            head = torch.cat([label, total_dist, total_time, trip_len, avg_dist, avg_speed],dim=1)
+        
+        batch_data_x[:,:,6] = batch_data_x[:,:,6] * 179.98863883
+        speed = batch_data_x[:,:,4]
+        x0 = torch.ones_like(batch_data_x[:,:,:2])
+        x0[:,:,1] = speed * torch.sin(batch_data_x[:,:,6]/180*np.pi)
+        x0[:,:,0] = speed * torch.cos(batch_data_x[:,:,6]/180*np.pi)
+        
+        
+        train_dataset_ori = TensorDataset(
+            torch.from_numpy(train_x_ori).to(torch.float),
+            torch.from_numpy(se_id).to(torch.float),
+            x0,head,
             torch.from_numpy(train_y_ori),
-            # torch.from_numpy(np.array([{"ctx_len": np.array([0])}]*n_geolife))
         )
         train_loader_source_ori = DataLoader(train_dataset_ori, batch_size=min(batch_sizes, len(train_dataset_ori)), num_workers=0, shuffle=True, drop_last=True)
         
@@ -427,89 +660,31 @@ def load_data(config):
 
 
 
-def get_max_preds(batch_heatmaps):
-    '''
-    get predictions from score maps
-    heatmaps: numpy.ndarray([batch_size, num_joints, height, width])
-    '''
-    assert isinstance(batch_heatmaps, np.ndarray), \
-        'batch_heatmaps should be numpy.ndarray'
-    assert batch_heatmaps.ndim == 4, 'batch_images should be 4-ndim'
+def accuracy(output, target, topk=(1,)):
+    r"""
+    Computes the accuracy over the k top predictions for the specified values of k
 
-    batch_size = batch_heatmaps.shape[0]
-    num_joints = batch_heatmaps.shape[1]
-    width = batch_heatmaps.shape[3]
-    heatmaps_reshaped = batch_heatmaps.reshape((batch_size, num_joints, -1))
-    idx = np.argmax(heatmaps_reshaped, 2)
-    maxvals = np.amax(heatmaps_reshaped, 2)
+    Args:
+        output (tensor): Classification outputs, :math:`(N, C)` where `C = number of classes`
+        target (tensor): :math:`(N)` where each value is :math:`0 \leq \text{targets}[i] \leq C-1`
+        topk (sequence[int]): A list of top-N number.
 
-    maxvals = maxvals.reshape((batch_size, num_joints, 1))
-    idx = idx.reshape((batch_size, num_joints, 1))
+    Returns:
+        Top-N accuracies (N :math:`\in` topK).
+    """
+    with torch.no_grad():
+        maxk = max(topk)
+        batch_size = target.size(0)
 
-    preds = np.tile(idx, (1, 1, 2)).astype(np.float32)
+        _, pred = output.topk(maxk, 1, True, True)
+        pred = pred.t()
+        correct = pred.eq(target[None])
 
-    preds[:, :, 0] = (preds[:, :, 0]) % width
-    preds[:, :, 1] = np.floor((preds[:, :, 1]) / width)
-
-    pred_mask = np.tile(np.greater(maxvals, 0.0), (1, 1, 2))
-    pred_mask = pred_mask.astype(np.float32)
-
-    preds *= pred_mask
-    return preds, maxvals
-
-def calc_dists(preds, target, normalize):
-    preds = preds.astype(np.float32)
-    target = target.astype(np.float32)
-    dists = np.zeros((preds.shape[1], preds.shape[0]))
-    for n in range(preds.shape[0]):
-        for c in range(preds.shape[1]):
-            if target[n, c, 0] > 1 and target[n, c, 1] > 1:
-                normed_preds = preds[n, c, :] / normalize[n]
-                normed_targets = target[n, c, :] / normalize[n]
-                dists[c, n] = np.linalg.norm(normed_preds - normed_targets)
-            else:
-                dists[c, n] = -1
-    return dists
-
-def dist_acc(dists, thr=0.5):
-    ''' Return percentage below threshold while ignoring values with a -1 '''
-    dist_cal = np.not_equal(dists, -1)
-    num_dist_cal = dist_cal.sum()
-    if num_dist_cal > 0:
-        return np.less(dists[dist_cal], thr).sum() * 1.0 / num_dist_cal
-    else:
-        return -1
-
-def accuracy(output, target, hm_type='gaussian', thr=0.5):
-    '''
-    Calculate accuracy according to PCK,
-    but uses ground truth heatmap rather than x,y locations
-    First value to be returned is average accuracy across 'idxs',
-    followed by individual accuracies
-    '''
-    idx = list(range(output.shape[1]))
-    norm = 1.0
-    if hm_type == 'gaussian':
-        pred, _ = get_max_preds(output)
-        target, _ = get_max_preds(target)
-        h = output.shape[2]
-        w = output.shape[3]
-        norm = np.ones((pred.shape[0], 2)) * np.array([h, w]) / 10
-    dists = calc_dists(pred, target, norm)
-
-    acc = np.zeros(len(idx))
-    avg_acc = 0
-    cnt = 0
-
-    for i in range(len(idx)):
-        acc[i] = dist_acc(dists[idx[i]], thr)
-        if acc[i] >= 0:
-            avg_acc = avg_acc + acc[i]
-            cnt += 1
-
-    avg_acc = avg_acc / cnt if cnt != 0 else 0
-
-    return acc, avg_acc, cnt, pred
+        res = []
+        for k in topk:
+            correct_k = correct[:k].flatten().sum(dtype=torch.float32)
+            res.append(correct_k * (100.0 / batch_size))
+        return res
 
 class AverageMeter(object):
     r"""Computes and stores the average and current value.
@@ -635,6 +810,7 @@ class MID():
         self._build()
 
 
+
     def train(self):
         for epoch in range(1, self.config.epochs + 1):
             # self.train_dataset.augment = self.config.augment
@@ -646,52 +822,64 @@ class MID():
             for batch_data in pbar:
                 self.optimizer.zero_grad()
                 
-                batch_data_x = batch_data[0].float()#.cuda() # [256, 200, 9]
-                label = batch_data[-1].unsqueeze(1)#.cuda()
+                # batch_data_x = batch_data[0].float()#.cuda() # [256, 200, 9]
+                # label = batch_data[-1].unsqueeze(1)#.cuda()
                 
-                sid = batch_data[1][:,0].unsqueeze(1).float()#.cuda()
-                eid = batch_data[1][:,1].unsqueeze(1).float()#.cuda()
+                # sid = batch_data[1][:,0].unsqueeze(1).float()#.cuda()
+                # eid = batch_data[1][:,1].unsqueeze(1).float()#.cuda()
+                
+                if self.config.use_traj:
+                    assert not self.config.use_img
+                    # traj = batch_data_x[:,:,:2].cuda() 
+                    # traj_feat = self.traj_encoder(traj.float())
+                    traj_feat = batch_data[2].cuda()
+                else:
+                    traj_feat = None
 
                 if self.config.use_img:
-                    img = batch_data[1].cuda() 
-                    img_feat = self.img_encoder(img.float())
+                    # img = batch_data[1].cuda() 
+                    # img_feat = self.img_encoder(img.float())
+                    img_feat = batch_data[2].cuda()
                 else:
                     img_feat = None
                 
-                trip_len = torch.sum(batch_data_x[:,:,2]!=0, dim=1).unsqueeze(1)
-                # max_feat = torch.max(batch_data_x[:,:,4:8], dim=1)[0] # v, a, j, br
-                avg_feat = torch.sum(batch_data_x[:,:,3:8], dim=1) / (trip_len+1e-6)
-                total_dist = torch.sum(batch_data_x[:,:,3], dim=1).unsqueeze(1)
-                total_time = torch.sum(batch_data_x[:,:,2], dim=1).unsqueeze(1)
-                avg_dist = avg_feat[:,0].unsqueeze(1)
-                avg_speed = avg_feat[:,1].unsqueeze(1)
-                trip_len = trip_len / self.config.traj_len
-                total_time = total_time / 3000.
-                if self.config.encoder_dim==1:
-                    head = label.float()
-                elif self.config.encoder_dim==8:
-                    head = torch.cat([label, total_dist, total_time, trip_len, avg_dist, avg_speed, sid, eid],dim=1)
-                else:
-                    head = torch.cat([label, total_dist, total_time, trip_len, avg_dist, avg_speed],dim=1)
-                head = head.cuda()
+                # trip_len = torch.sum(batch_data_x[:,:,2]!=0, dim=1).unsqueeze(1)
+                # avg_feat = torch.sum(batch_data_x[:,:,3:5], dim=1) / (trip_len+1e-6)
+                # total_dist = torch.sum(batch_data_x[:,:,3], dim=1).unsqueeze(1)
+                # total_time = torch.sum(batch_data_x[:,:,2], dim=1).unsqueeze(1)
+                # avg_dist = avg_feat[:,0].unsqueeze(1)
+                # avg_speed = avg_feat[:,1].unsqueeze(1)
+                # # trip_len = trip_len / self.config.traj_len
+                # total_time = total_time / 3000.
+                # if self.config.encoder_dim==1:
+                #     head = label.float()
+                # elif self.config.encoder_dim==8:
+                #     head = torch.cat([label, total_dist, total_time, trip_len, avg_dist, avg_speed, sid, eid],dim=1)
+                # else:
+                #     head = torch.cat([label, total_dist, total_time, trip_len, avg_dist, avg_speed],dim=1)
+                # head = head.cuda()
                 
-                speed = batch_data_x[:,:,4]
-                x0 = torch.ones_like(batch_data_x[:,:,:2])
-                x0[:,:,1] = speed * torch.sin(batch_data_x[:,:,7]/180*np.pi)
-                x0[:,:,0] = speed * torch.cos(batch_data_x[:,:,7]/180*np.pi)
-                train_loss = self.model.get_loss(x0, latent=head, img_feat=img_feat)
-                # train_loss = self.model.get_loss(batch, node_type)
+                # batch_data_x[:,:,6] = batch_data_x[:,:,6] * 179.98863883
+                # speed = batch_data_x[:,:,4]
+                # x0 = torch.ones_like(batch_data_x[:,:,:2])
+                # x0[:,:,1] = speed * torch.sin(batch_data_x[:,:,6]/180*np.pi)
+                # x0[:,:,0] = speed * torch.cos(batch_data_x[:,:,6]/180*np.pi)
                 
+                x0,head = batch_data[-3],batch_data[-2]
+                x0,head = x0.cuda(),head.cuda()
+                train_loss = self.model.get_loss(x0, latent=head, img_feat=img_feat, traj_feat=traj_feat)
+
                 pbar.set_description(f"Epoch {epoch}, {node_type} MSE: {train_loss.item():.8f}")
                 epoch_losses.append(train_loss.item())
                 train_loss.backward()
                 self.optimizer.step()
-            # print(f"Epoch {epoch}, {node_type} MSE: {np.array(epoch_losses).mean():.8f}")
             self.log.info(f"Epoch {epoch}, {node_type} MSE: {np.array(epoch_losses).mean():.8f}")
 
             if epoch % self.config.save_every == 0:
                 m_path = self.config.job_dir + f"/ckpt/unet_{epoch}.pt"
                 torch.save(self.model.state_dict(), m_path)
+
+
 
     def eval(self, sampling, step):
         epoch = self.config.eval_at
@@ -758,6 +946,7 @@ class MID():
         #self.log.info(f"Best of 20: Epoch {epoch} ADE: {ade} FDE: {fde}")
 
 
+
     def train_proxy(self):
         raise NotImplementedError
         best_top1 = 0.
@@ -810,6 +999,7 @@ class MID():
         test_loader = DataLoader(test_dataset, batch_size=min(self.config.batch_size, len(test_dataset)), num_workers=0, shuffle=False, drop_last=False)
         top1 = self.model_proxy.validate(0, test_loader, self.config)
         print("Top1: ",top1)
+
 
 
     def _build(self):
@@ -910,12 +1100,12 @@ class MID():
         model_proxy = Proxy(2, self.config.proxy_hidden_dim, 1, n_ensembles=self.config.proxy_n_ensemble)
         self.model_proxy = model_proxy.cuda()
         
-        if self.config.use_img:
-            img_encoder = resnet50(True)
-            for name,param in img_encoder.named_parameters():
-                param.requires_grad = False 
-            self.img_encoder = img_encoder.cuda()
-            self.img_encoder.eval()
+        # if self.config.use_img:
+        #     img_encoder = resnet50(True)
+        #     for name,param in img_encoder.named_parameters():
+        #         param.requires_grad = False 
+        #     self.img_encoder = img_encoder.cuda()
+        #     self.img_encoder.eval()
 
         print("> Model built!")
 

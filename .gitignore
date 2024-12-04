@@ -1,5 +1,7 @@
 results
+outputs
 raw_data
 ./*.png
 *.npy
-*.pyc
+**.pyc
+run_schwarzhorn.md

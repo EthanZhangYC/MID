@@ -429,63 +429,20 @@ def load_data():
     with open(filename, 'rb') as f:
         kfold_dataset, X_unlabeled = pickle.load(f)
     dataset = kfold_dataset
-    
-    # train_x = dataset[1].squeeze(1)
-    # train_y = dataset[3]
-    # train_x = train_x[:,:,4:]   
-    # pad_mask_source = train_x[:,:,0]==0
-    # train_x[pad_mask_source] = 0.
-    
-    # if config.data.interpolated:
+ 
     train_x_ori = dataset[1].squeeze(1)[:,:,2:]
-    # else:
-    #     train_x_ori = dataset[0].squeeze(1)[:,:,2:]
     train_y_ori = dataset[3]
     pad_mask_source_train_ori = train_x_ori[:,:,2]==0
     train_x_ori[pad_mask_source_train_ori] = 0.
-    
-    
-    # if config.data.filter_area:
-    #     logger.info('filtering area')
-    #     train_x_ori,train_y_ori = filter_area(train_x_ori, train_y_ori, pad_mask_source_train_ori)
-    #     pad_mask_source_train_ori = train_x_ori[:,:,2]==0
-    # 1
 
     if TRAJ_LENGTH < train_x_ori.shape[1]:
         train_x_ori = train_x_ori[:,:TRAJ_LENGTH,:]
         pad_mask_source_train_ori = pad_mask_source_train_ori[:,:TRAJ_LENGTH]
 
-    # if "seid" in config.model.mode:
-    #     sid,eid = generate_posid(train_x_ori, pad_mask_source_train_ori)
-    #     se_id = np.stack([sid, eid]).T
-    # 1
-
-    # if config.data.unnormalize:
-    #     logger.info('unnormalizing data')
-    #     minmax_list = [
-    #         (18.249901, 55.975593), (-122.3315333, 126.998528), \
-    #         (0.9999933186918497, 1198.999998648651),
-    #         (0.0, 50118.17550774085),
-    #         (0.0, 49.95356703911097),
-    #         (-9.99348698095659, 9.958323482935628),
-    #         (-39.64566646191948, 1433.3438889109589),
-    #         (0.0, 359.95536847383516)
-    #     ]
-    #     for i in range(7):
-    #         if i==2:
-    #             continue
-    #         train_x_ori[:,:,i] = train_x_ori[:,:,i] * (minmax_list[i][1]-minmax_list[i][0]) + minmax_list[i][0]
-    # 1
-    
-    # if config.data.filter_nopad:
-    # logger.info('filtering nopadding segments')
     pad_mask_source_incomplete = np.sum(pad_mask_source_train_ori,axis=1) == 0
     train_x_ori = train_x_ori[pad_mask_source_incomplete]
     train_y_ori = train_y_ori[pad_mask_source_incomplete]
-    # if "seid" in config.model.mode:
-    #     se_id = se_id[pad_mask_source_incomplete]
-    # # np.sum(pad_mask_source_incomplete)
-        
+
     class_dict={}
     for y in train_y_ori:
         if y not in class_dict:
@@ -501,19 +458,8 @@ def load_data():
     with open(filename_mtl, 'rb') as f:
         kfold_dataset, X_unlabeled_mtl = pickle.load(f)
     dataset_mtl = kfold_dataset
-    
-    # train_x_mtl = dataset_mtl[1].squeeze(1)
-    # test_x = dataset_mtl[4].squeeze(1)
-    # train_y_mtl = dataset_mtl[2]
-    # test_y = dataset_mtl[5]
 
-        
-    # # train_x_mtl_ori = train_x_mtl[:,:,2:] 
-    # # train_x_mtl_ori[pad_mask_target_train] = 0.
-    # if config.data.interpolated:
     train_x_mtl_ori = dataset_mtl[1].squeeze(1)[:,:,2:]
-    # else:
-    #     train_x_mtl_ori = dataset_mtl[0].squeeze(1)[:,:,2:]
     pad_mask_target_train_ori = train_x_mtl_ori[:,:,2]==0
     train_x_mtl_ori[pad_mask_target_train_ori] = 0.
     train_y_mtl_ori = dataset_mtl[2]
@@ -522,102 +468,13 @@ def load_data():
         train_x_mtl_ori = train_x_mtl_ori[:,:TRAJ_LENGTH,:]
         pad_mask_target_train_ori = pad_mask_target_train_ori[:,:TRAJ_LENGTH]
 
-    
-    # # if "seid" in config.model.mode:
-    # min_max = []
-    # sid,eid = generate_posid(train_x_mtl_ori, pad_mask_target_train_ori, min_max=min_max)
-    # se_id_mtl = np.stack([sid, eid]).T
-    
-    # if config.data.unnormalize:
-    #     minmax_list=[
-    #         (45.230416, 45.9997262293), (-74.31479102, -72.81248199999999),  \
-    #         (0.9999933186918497, 1198.999998648651), # time
-    #         (0.0, 50118.17550774085), # dist
-    #         (0.0, 49.95356703911097), # speed
-    #         (-9.99348698095659, 9.958323482935628), #acc
-    #         (-39.64566646191948, 1433.3438889109589), #jerk
-    #         (0.0, 359.95536847383516) #bearing
-    #     ] 
-    #     for i in range(7):
-    #         if i==2:
-    #             continue
-    #         train_x_mtl_ori[:,:,i] = train_x_mtl_ori[:,:,i] * (minmax_list[i][1]-minmax_list[i][0]) + minmax_list[i][0]
-    # 1
-    
-    # if config.data.filter_nopad:
     pad_mask_target_incomplete = np.sum(pad_mask_target_train_ori,axis=1) == 0
     train_x_mtl_ori = train_x_mtl_ori[pad_mask_target_incomplete]
     train_y_mtl_ori = train_y_mtl_ori[pad_mask_target_incomplete]
     
-
-    
-    # train_x_mtl = train_x_mtl[:,:,4:]
-    # test_x = test_x[:,:,4:]
-    
-    # pad_mask_target_train = train_x_mtl[:,:,0]==0
-    # pad_mask_target_test = test_x[:,:,0]==0
-    # train_x_mtl[pad_mask_target_train] = 0.
-    # test_x[pad_mask_target_test] = 0.
-    
-    # class_dict={}
-    # for y in train_y_mtl:
-    #     if y not in class_dict:
-    #         class_dict[y]=1
-    #     else:
-    #         class_dict[y]+=1
-    # print('MTL train:',dict(sorted(class_dict.items())))
-    # class_dict={}
-    # for y in test_y:
-    #     if y not in class_dict:
-    #         class_dict[y]=1
-    #     else:
-    #         class_dict[y]+=1
-    # print('MTL test:',dict(sorted(class_dict.items())))
-
-    # print('Reading Data: (train: geolife + MTL, test: MTL)')
-    # # logger.info('Total shape: '+str(train_data.shape))
     print('GeoLife shape: '+str(train_x_ori.shape))
     print('MTL shape: '+str(train_x_mtl_ori.shape))
 
-    
-    # n_geolife = train_x.shape[0]
-    # n_mtl = train_x_mtl.shape[0]
-    # train_dataset_geolife = TensorDataset(
-    #     torch.from_numpy(train_x).to(torch.float),
-    #     torch.from_numpy(train_y),
-    #     torch.from_numpy(np.array([0]*n_geolife)).float()
-    # )
-    # train_dataset_mtl = TensorDataset(
-    #     torch.from_numpy(train_x_mtl).to(torch.float),
-    #     torch.from_numpy(train_y_mtl), # add label for debug
-    #     torch.from_numpy(np.array([1]*n_mtl)).float(),
-    #     torch.from_numpy(np.arange(n_mtl))
-    # )
-
-
-    # sampler = ImbalancedDatasetSampler(train_dataset_geolife, callback_get_label=get_label, num_samples=len(train_dataset_mtl))
-    # train_loader_source = DataLoader(train_dataset_geolife, batch_size=min(batch_sizes, len(train_dataset_geolife)), sampler=sampler, num_workers=8, shuffle=False, drop_last=True)
-    # train_loader_target = DataLoader(train_dataset_mtl, batch_size=min(batch_sizes, len(train_dataset_mtl)), num_workers=8, shuffle=True, drop_last=False)
-    # train_source_iter = ForeverDataIterator(train_loader_source)
-    # train_tgt_iter = ForeverDataIterator(train_loader_target)
-    # train_loader = (train_source_iter, train_tgt_iter)
-    
-    # if config.data.traj_length<train_x_ori.shape[1]:
-    #     train_x_ori = train_x_ori[:,:config.data.traj_length,:]
-    #     train_x_mtl_ori = train_x_mtl_ori[:,:config.data.traj_length,:]
-        
-    # # if "seid" in config.model.mode:
-    # train_dataset_ori = TensorDataset(
-    #     torch.from_numpy(train_x_ori).to(torch.float),
-    #     torch.from_numpy(se_id).to(torch.float),
-    #     torch.from_numpy(train_y_ori)
-    # )
-    # train_dataset_mtl_ori = TensorDataset(
-    #     torch.from_numpy(train_x_mtl_ori).to(torch.float),
-    #     torch.from_numpy(se_id_mtl).to(torch.float),
-    #     torch.from_numpy(train_y_mtl_ori)
-    # )
-    # else:
     train_dataset_ori = TensorDataset(
         torch.from_numpy(train_x_ori).to(torch.float),
         torch.from_numpy(train_y_ori)
@@ -628,58 +485,58 @@ def load_data():
     )
     train_loader_source_ori = DataLoader(train_dataset_ori, batch_size=min(batch_sizes, len(train_dataset_ori)), num_workers=0, shuffle=False, drop_last=False)
     train_loader_target_ori = DataLoader(train_dataset_mtl_ori, batch_size=min(batch_sizes, len(train_dataset_mtl_ori)), num_workers=0, shuffle=False, drop_last=False)
-    # train_loader_target_ori=train_loader_source_ori=None
-    
-    # test_dataset = TensorDataset(
-    #     torch.from_numpy(test_x).to(torch.float),
-    #     torch.from_numpy(test_y),
-    # )
-    # test_loader = DataLoader(test_dataset, batch_size=min(batch_sizes, len(test_dataset)))
 
-    # train_source_iter=train_tgt_iter=test_loader=train_loader_target=None
     return train_loader_source_ori, train_loader_target_ori
 
 
+TRAJ_LENGTH = 600
+def load_data_1203():    
+    base_dir = "/home/yichen/data/xieyuan_datas/"
+    with open(base_dir+"241202_xieyuan_datas_geo1mtl1_selfnormGeoMtl.npy", "rb") as f:
+        train_x, train_y, train_x_mtl, train_y_mtl, test_x_mtl, test_y_mtl = pickle.load(f)
+    # train_x = train_x[:,:,2:]
+    # train_x_mtl = train_x_mtl[:,:,2:]
+    
+    train_dataset_src = TensorDataset(
+        torch.from_numpy(train_x).to(torch.float),
+        torch.from_numpy(train_y)
+    )
+    train_dataset_tgt = TensorDataset(
+        torch.from_numpy(train_x_mtl).to(torch.float),
+        torch.from_numpy(train_y_mtl)
+    )
+    train_loader_source = DataLoader(train_dataset_src, batch_size=min(64, len(train_dataset_src)), shuffle=False, drop_last=False, num_workers=0)
+    train_loader_target = DataLoader(train_dataset_tgt, batch_size=min(64, len(train_dataset_tgt)), shuffle=False, drop_last=False, num_workers=0)
+
+    return train_loader_source, train_loader_target 
 
 
 
-
-
-src_loader, tgt_loader = load_data()
+src_loader, tgt_loader = load_data_1203()
 pbar = tqdm(tgt_loader, ncols=80)
 epoch_losses = [] 
 all_head = []
 for batch_data in pbar:
-    
     bs = batch_data[0].shape[0]
     batch_data_x = batch_data[0].float()#.cuda() # [256, 200, 9]
+    # print(batch_data_x.shape)
     # label = batch_data[-1].unsqueeze(1)#.cuda()
     label = torch.from_numpy(np.random.randint(0,4,[bs,1])).float()
     
     trip_len = torch.sum(batch_data_x[:,:,2]!=0, dim=1).unsqueeze(1)
-    # max_feat = torch.max(batch_data_x[:,:,4:8], dim=1)[0] # v, a, j, br
-    avg_feat = torch.sum(batch_data_x[:,:,3:8], dim=1) / (trip_len+1e-6)
+    avg_feat = torch.sum(batch_data_x[:,:,3:5], dim=1) / (trip_len+1e-6)
     total_dist = torch.sum(batch_data_x[:,:,3], dim=1).unsqueeze(1)
     total_time = torch.sum(batch_data_x[:,:,2], dim=1).unsqueeze(1)
     avg_dist = avg_feat[:,0].unsqueeze(1)
     avg_speed = avg_feat[:,1].unsqueeze(1)
-    trip_len = trip_len / TRAJ_LENGTH
+    # trip_len = trip_len / TRAJ_LENGTH
     total_time = total_time / 3000.
+                
     head = torch.cat([label, total_dist, total_time, trip_len, avg_dist, avg_speed],dim=1)
     all_head.append(head)
-    # if self.config.encoder_dim==1:
-    #     head = label.float()
-    # head = head.cuda()
-    
-    # speed = batch_data_x[:,:,4]
-    # x0 = torch.ones_like(batch_data_x[:,:,:2])
-    # x0[:,:,1] = speed * torch.sin(batch_data_x[:,:,7]/180*np.pi)
-    # x0[:,:,0] = speed * torch.cos(batch_data_x[:,:,7]/180*np.pi)
-    # train_loss = self.model.get_loss(x0, latent=head, img_feat=img_feat)
-
 
 all_head = np.concatenate(all_head)
-np.save("1114_heads_tgt.npy", all_head)
+np.save("1203_heads_tgt.npy", all_head)
 
         
         
