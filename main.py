@@ -24,6 +24,7 @@ def parse_args():
     parser.add_argument('--use_img', action='store_true', help='whether to output attention in encoder')
     parser.add_argument('--use_traj', action='store_true', help='whether to output attention in encoder')
     parser.add_argument('--not_filter_padding', action='store_true', help='whether to output attention in encoder')
+
     return parser.parse_args()
 
 

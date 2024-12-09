@@ -873,6 +873,7 @@ class MID():
                 epoch_losses.append(train_loss.item())
                 train_loss.backward()
                 self.optimizer.step()
+                
             self.log.info(f"Epoch {epoch}, {node_type} MSE: {np.array(epoch_losses).mean():.8f}")
 
             if epoch % self.config.save_every == 0:
@@ -945,8 +946,6 @@ class MID():
         print(f"Epoch {epoch} Best Of 20: ADE: {ade} FDE: {fde}")
         #self.log.info(f"Best of 20: Epoch {epoch} ADE: {ade} FDE: {fde}")
 
-
-
     def train_proxy(self):
         raise NotImplementedError
         best_top1 = 0.
@@ -1000,8 +999,6 @@ class MID():
         top1 = self.model_proxy.validate(0, test_loader, self.config)
         print("Top1: ",top1)
 
-
-
     def _build(self):
         self._build_dir()
 
@@ -1046,14 +1043,15 @@ class MID():
         print("> Directory built!")
 
     def _build_optimizer(self):
-        self.optimizer = optim.Adam([{'params': self.registrar.get_all_but_name_match('map_encoder').parameters()},
-                                     {'params': self.model.parameters()}
-                                    ],
-                                    lr=self.config.lr)
-        self.scheduler = optim.lr_scheduler.ExponentialLR(self.optimizer,gamma=0.98)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.config.lr)
+        # self.optimizer = optim.Adam([{'params': self.registrar.get_all_but_name_match('map_encoder').parameters()},
+        #                              {'params': self.model.parameters()}
+        #                             ],
+        #                             lr=self.config.lr)
+        # self.scheduler = optim.lr_scheduler.ExponentialLR(self.optimizer,gamma=0.98)
         
-        self.optimizer_proxy = optim.Adam(self.model_proxy.parameters(), lr=self.config.proxy_lr)
-        self.scheduler_proxy = optim.lr_scheduler.ExponentialLR(self.optimizer_proxy,gamma=0.98)
+        # self.optimizer_proxy = optim.Adam(self.model_proxy.parameters(), lr=self.config.proxy_lr)
+        # self.scheduler_proxy = optim.lr_scheduler.ExponentialLR(self.optimizer_proxy,gamma=0.98)
         print("> Optimizer built!")
 
     def _build_encoder_config(self):
@@ -1094,18 +1092,19 @@ class MID():
         model = AutoEncoder(config, encoder = self.encoder)
 
         self.model = model.cuda()
-        if self.config.eval_mode:
-            self.model.load_state_dict(self.checkpoint['ddpm'])
+        self.log.info(self.model)
+        # if self.config.eval_mode:
+        #     self.model.load_state_dict(self.checkpoint['ddpm'])
             
-        model_proxy = Proxy(2, self.config.proxy_hidden_dim, 1, n_ensembles=self.config.proxy_n_ensemble)
-        self.model_proxy = model_proxy.cuda()
+        # model_proxy = Proxy(2, self.config.proxy_hidden_dim, 1, n_ensembles=self.config.proxy_n_ensemble)
+        # self.model_proxy = model_proxy.cuda()
         
-        # if self.config.use_img:
-        #     img_encoder = resnet50(True)
-        #     for name,param in img_encoder.named_parameters():
-        #         param.requires_grad = False 
-        #     self.img_encoder = img_encoder.cuda()
-        #     self.img_encoder.eval()
+        # # if self.config.use_img:
+        # #     img_encoder = resnet50(True)
+        # #     for name,param in img_encoder.named_parameters():
+        # #         param.requires_grad = False 
+        # #     self.img_encoder = img_encoder.cuda()
+        # #     self.img_encoder.eval()
 
         print("> Model built!")
 

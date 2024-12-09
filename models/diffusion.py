@@ -79,7 +79,8 @@ class DiffusionTraj(Module):
         e_rand = torch.randn_like(x_0).cuda()  # (B, N, d)
 
         e_theta = self.net(c0 * x_0 + c1 * e_rand, beta=beta, context=context, img_feat=img_feat, traj_feat=traj_feat)
-        loss = F.mse_loss(e_theta.view(-1, point_dim), e_rand.view(-1, point_dim), reduction='mean')
+        loss = F.mse_loss(e_theta.reshape(-1, point_dim), e_rand.reshape(-1, point_dim), reduction='mean')
+        # loss = F.mse_loss(e_theta.view(-1, point_dim), e_rand.view(-1, point_dim), reduction='mean')
         return loss
 
     def sample(self, num_points, context, sample, bestof, point_dim=2, flexibility=0.0, ret_traj=False, sampling="ddpm", step=100):
@@ -186,10 +187,7 @@ class TransformerConcatLinear(Module):
         # self.pos_emb = PositionalEncoding(d_model=2*context_dim, dropout=0.1, max_len=24)
         self.pos_emb = PositionalEncoding(d_model=2*context_dim, dropout=0.1, max_len=config.traj_len)
         self.concat1 = ConcatSquashLinear(2,2*context_dim,ctx_dim)
-        if context_dim==1:
-            self.layer = nn.TransformerEncoderLayer(d_model=2*context_dim, nhead=1, dim_feedforward=4*context_dim)
-        else:
-            self.layer = nn.TransformerEncoderLayer(d_model=2*context_dim, nhead=4, dim_feedforward=4*context_dim)
+        self.layer = nn.TransformerEncoderLayer(d_model=2*context_dim, nhead=4, dim_feedforward=4*context_dim)
         self.transformer_encoder = nn.TransformerEncoder(self.layer, num_layers=tf_layer)
         self.concat3 = ConcatSquashLinear(2*context_dim,context_dim,ctx_dim)
         self.concat4 = ConcatSquashLinear(context_dim,context_dim//2,ctx_dim)

@@ -376,7 +376,33 @@ head = np.array([
     [0.0000e+00, 6.1595e+01, 2.0000e-01, 600., 1.0266e-01, 1.0266e-01],
     [1.0000e+00, 6.3451e+00, 2.0000e-01, 600., 1.0575e-02, 1.0575e-02],
     [2.0000e+00, 4.4909e+01, 2.0000e-01, 600., 7.4848e-02, 7.4848e-02],
-    [3.0000e+00, 1.7232e+01, 1.3867e-01, 550。, 4.1423e-02, 4.1423e-02],
+    [3.0000e+00, 1.7232e+01, 1.3867e-01, 550., 4.1423e-02, 4.1423e-02],
+])
+
+model_dir_list=[
+    "/home/yichen/MID/results/1204_cond6_lr5e3_bs1024_embedlatent_len102_correctbr/ckpt/unet_1000.pt",
+    "/home/yichen/MID/results/1204_cond6_lr5e3_bs1024_embedlatent_len102_correctbr/ckpt/unet_2000.pt",
+    "/home/yichen/MID/results/1204_cond6_lr5e3_bs1024_embedlatent_len102_correctbr/ckpt/unet_4000.pt",
+    "/home/yichen/MID/results/1204_cond6_lr5e3_bs1024_embedlatent_len102_correctbr/ckpt/unet_8000.pt",
+    "/home/yichen/MID/results/1204_cond6_lr5e3_bs1024_embedlatent_len102_correctbr/ckpt/unet_16000.pt",
+] 
+filename='1205mtl_mid_speed_embedlatent_cond6_len100.png'
+
+
+model_dir_list=[
+    "/home/yichen/MID/results/1205_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet/ckpt/unet_1000.pt",
+    "/home/yichen/MID/results/1205_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet/ckpt/unet_2000.pt",
+    "/home/yichen/MID/results/1205_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet/ckpt/unet_4000.pt",
+    "/home/yichen/MID/results/1205_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet/ckpt/unet_8000.pt",
+    "/home/yichen/MID/results/1205_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet/ckpt/unet_16000.pt",
+    "/home/yichen/MID/results/1205_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet/ckpt/unet_24000.pt",
+] 
+filename='1206mtl_mid_speed_embedlatent_cond6_len100_guideunet.png'
+head = np.array([
+    [0.0000e+00, 6.1595e+01, 2.0000e-01, 102., 1.0266e-01, 1.0266e-01],
+    [1.0000e+00, 6.3451e+00, 2.0000e-01, 102., 1.0575e-02, 1.0575e-02],
+    [2.0000e+00, 4.4909e+01, 2.0000e-01, 102., 7.4848e-02, 7.4848e-02],
+    [3.0000e+00, 1.7232e+01, 1.3867e-01, 95., 4.1423e-02, 4.1423e-02],
 ])
 
 
@@ -392,7 +418,7 @@ if not args.generate:
         print(ckpt_dir)
         checkpoint = torch.load(ckpt_dir)
         agent.model.load_state_dict(checkpoint)
-        new_traj = agent.model.generate(head, num_points=args.traj_len, sample=2, bestof=True, sampling=sampling, step=100//steps) # B * 20 * 12 * 2
+        new_traj = agent.model.generate(head, num_points=args.traj_len, sample=2, bestof=True)#, sampling=sampling, step=100//steps) # B * 20 * 12 * 2
         new_traj = new_traj[0,0] # (20, 4, 200, 2)
         
         if args.inter_seconds==5:
@@ -403,7 +429,6 @@ if not args.generate:
             lon_min,lon_max = (0.0, 80.0)
         new_traj[:,0] = new_traj[:,0] * (lat_max-lat_min) + lat_min
         new_traj[:,1] = new_traj[:,1] * (lon_max-lon_min) + lon_min   
-        pdb.set_trace()
              
         # start_pt = [36,72]
         tmp_x = 36
@@ -453,7 +478,10 @@ else:
         Gen_feat = []
         Gen_head = head
         eps = 1e-9
-        for batch_head in val_loader:
+        for idx,batch_head in enumerate(val_loader):
+            # if idx>5:
+            #     break
+            
             batch_head = batch_head.cuda()
             new_v = agent.model.generate(batch_head, num_points=args.traj_len, sample=2, bestof=True, sampling=sampling, step=100//steps) # (2, bs, 200, 2)
             new_v = new_v[0] # (bs, 200, 2)
@@ -511,6 +539,7 @@ else:
 
             new_traj = new_traj[:,:n_timestep]
             Gen_traj.append(new_traj)
+
             
         Gen_traj = np.concatenate(Gen_traj,axis=0)
         Gen_feat = np.concatenate(Gen_feat,axis=0)

@@ -5,6 +5,7 @@ from .encoders.trajectron import Trajectron
 from .encoders import dynamics as dynamic_module
 import models.diffusion as diffusion
 from models.diffusion import DiffusionTraj,VarianceSchedule
+from models.traj_unet import Guide_UNet
 import pdb
 
 class AutoEncoder(Module):
@@ -13,24 +14,35 @@ class AutoEncoder(Module):
         super().__init__()
         self.config = config
         self.encoder = encoder
-        self.diffnet = getattr(diffusion, config.diffnet)
         
-        if self.config.embed_latent:
+        if self.config.embed_latent and config.diffnet != "Guide_UNet":
             print('embedding latent')
             self.latent_embed = nn.Linear(config.encoder_dim,128)
             encoder_dim = 128
         else:
+            self.latent_embed = None
             encoder_dim = config.encoder_dim
+        
 
-        self.diffusion = DiffusionTraj(
-            net = self.diffnet(point_dim=2, context_dim=encoder_dim, tf_layer=config.tf_layer, residual=False, config=config),
-            var_sched = VarianceSchedule(
-                num_steps=100,
-                beta_T=5e-2,
-                mode='linear'
-
+        if config.diffnet == "Guide_UNet":
+            self.diffusion = DiffusionTraj(
+                net = Guide_UNet(config),
+                var_sched = VarianceSchedule(
+                    num_steps=100,
+                    beta_T=5e-2,
+                    mode='linear'
+                )
             )
-        )
+        else:
+            self.diffnet = getattr(diffusion, config.diffnet)
+            self.diffusion = DiffusionTraj(
+                net = self.diffnet(point_dim=2, context_dim=encoder_dim, tf_layer=config.tf_layer, residual=False, config=config),
+                var_sched = VarianceSchedule(
+                    num_steps=100,
+                    beta_T=5e-2,
+                    mode='linear'
+                )
+            )
         
     def encode(self, batch,node_type):
         z = self.encoder.get_latent(batch, node_type)
@@ -40,7 +52,7 @@ class AutoEncoder(Module):
         #print(f"Using {sampling}")
         # dynamics = self.encoder.node_models_dict[node_type].dynamic
         # encoded_x = self.encoder.get_latent(batch, node_type)
-        if self.config.embed_latent:
+        if self.latent_embed:
             latent = self.latent_embed(latent)
         predicted_y_vel = self.diffusion.sample(num_points, latent, sample, bestof, flexibility=flexibility, ret_traj=ret_traj, sampling=sampling, step=step)
         return predicted_y_vel.cpu().detach().numpy()
@@ -76,7 +88,7 @@ class AutoEncoder(Module):
         #  map) = batch
         # feat_x_encoded = self.encode(batch, node_type) # B * 64
         # loss = self.diffusion.get_loss(y_t.cuda(), feat_x_encoded)
-        if self.config.embed_latent:
+        if self.latent_embed:
             latent = self.latent_embed(latent)
         loss = self.diffusion.get_loss(batch.cuda(), latent, img_feat=img_feat, traj_feat=traj_feat)
         return loss

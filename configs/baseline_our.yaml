@@ -5,7 +5,8 @@ lr: 0.001
 data_dir: processed_data
   # the path with the directory with XXX.pkl
 # Training Prarmeters:
-diffnet: TransformerConcatLinear #TransformerConcatLinear
+# diffnet: TransformerConcatLinear #TransformerConcatLinear
+diffnet: Guide_UNet 
 encoder_dim: 6
 tf_layer: 3
 epochs: 50000
