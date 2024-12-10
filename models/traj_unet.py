@@ -291,8 +291,9 @@ class Model(nn.Module):
         resamp_with_conv = True
         num_timesteps = 500
         
-        ch_mult = [2,4,4,4]
+        # ch_mult = [2,3,3,3]
         ch_mult = [4,8,8,8]
+        ch_mult = [8,16,16,16]
         ch_mult = tuple(ch_mult)
         print(ch_mult)
 

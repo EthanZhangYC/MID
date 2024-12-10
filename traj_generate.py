@@ -398,6 +398,17 @@ model_dir_list=[
     "/home/yichen/MID/results/1205_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet/ckpt/unet_24000.pt",
 ] 
 filename='1206mtl_mid_speed_embedlatent_cond6_len100_guideunet.png'
+
+
+model_dir_list=[
+    "/home/yichen/MID/results/1207_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet_chmult2333/ckpt/unet_1000.pt",
+    "/home/yichen/MID/results/1207_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet_chmult2333/ckpt/unet_2000.pt",
+    "/home/yichen/MID/results/1207_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet_chmult2333/ckpt/unet_4000.pt",
+    "/home/yichen/MID/results/1207_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet_chmult2333/ckpt/unet_8000.pt",
+    "/home/yichen/MID/results/1207_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet_chmult2333/ckpt/unet_16000.pt",
+    "/home/yichen/MID/results/1207_cond6_lr1e3_bs1024_embedlatent_len102_correctbr_guideunet_chmult2333/ckpt/unet_25000.pt",
+] 
+filename='1210mtl_mid_speed_embedlatent_cond6_len100_guideunet.png'
 head = np.array([
     [0.0000e+00, 6.1595e+01, 2.0000e-01, 102., 1.0266e-01, 1.0266e-01],
     [1.0000e+00, 6.3451e+00, 2.0000e-01, 102., 1.0575e-02, 1.0575e-02],
